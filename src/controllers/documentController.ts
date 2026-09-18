@@ -4,6 +4,7 @@ import { requireStepUpAuth } from '../middlewares/stepUpAuth';
 import { requestHighImpactAction, approveHighImpactAction, getPendingAction } from '../services/fourEyesService';
 import { CreateDocumentSchema } from '../validators/schemas';
 import { documentRepository } from '../repositories/documentRepository';
+import { logSecuredAuditEvent } from '../services/auditService';
 import crypto from 'crypto';
 
 // Memória temporária para liberação de acesso via 4 Olhos
@@ -20,7 +21,8 @@ export class DocumentController {
   // Consulta de documento (Com Circuit Breaker + Honeytoken + StepUp Auth + 4 Eyes)
   async getDocument(request: FastifyRequest, reply: FastifyReply) {
     const { id } = request.params as any;
-    const userId = (request as any).user?.id || request.headers['x-user-id'] || 'anonymous';
+    const userId = (request as any).user?.id || (request.headers['x-user-id'] as string) || 'anonymous';
+    const ip = request.ip;
     
     // Acessa a camada de dados limpa (PgBouncer/Drizzle)
     const doc = await documentRepository.findById(id);
@@ -32,7 +34,7 @@ export class DocumentController {
     }
     
     // Regra dos Quatro Olhos para qualquer documento ULTRASSECRETO
-    if (doc.nivelAcesso === 'ULTRASSECRETO') {
+    if (doc && doc.nivelAcesso === 'ULTRASSECRETO') {
       const allowedUsers = grantedFourEyesAccess.get(id);
       if (!allowedUsers || !allowedUsers.has(userId)) {
         request.log.warn({ event: 'REGRA_QUATRO_OLHOS_EXIGIDA', userId, docId: id });
@@ -50,11 +52,31 @@ export class DocumentController {
     }
 
     // Step-up Auth (Força MFA)
-    (request as any).documentLevel = abacDecision.documentLevel || doc.nivelAcesso;
+    (request as any).documentLevel = abacDecision.documentLevel || (doc ? doc.nivelAcesso : 'PUBLICO');
     await requireStepUpAuth(request, reply);
     
     if (reply.sent) return; // Se o middleware bloqueou e respondeu, a execução para
     
+    // 🚨 LOG DE AUDITORIA: REGISTRA ABERTURA DO DOCUMENTO NA RENDER
+    request.log.info({
+      event: 'DOCUMENTO_VISUALIZADO',
+      documentId: id,
+      userId,
+      ip,
+      userAgent: request.headers['user-agent'],
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      await logSecuredAuditEvent(userId, 'VISUALIZACAO_DOCUMENTO', {
+        documentId: id,
+        ip,
+        fingerprint: request.headers['x-device-fingerprint'] || 'desconhecido'
+      });
+    } catch (e) {
+      // Ignora se o Redis de auditoria falhar
+    }
+
     return { status: 'Success', document: doc };
   }
 
@@ -101,7 +123,6 @@ export class DocumentController {
     const userId = (request as any).user?.id;
     const { id } = request.params as any;
     
-    // Validação Zod anti-Injection
     const parsedBody = CreateDocumentSchema.partial().parse(request.body);
     
     const actionId = await requestHighImpactAction(userId, 'DESCLASSIFICAR_DOCUMENTO', { docId: id, newLevel: parsedBody.nivelAcesso });
@@ -115,17 +136,13 @@ export class DocumentController {
     const { actionId } = request.params as any;
     
     await approveHighImpactAction(approverId, actionId);
-    
-    // Aqui atualizaríamos o banco de dados via repositório
-    // await documentRepository.updateAccessLevel(docId, newLevel);
-    
     return reply.code(200).send({ message: 'Ação executada com sucesso no Banco de Dados.' });
   }
 
-  // TESTE 8: Canary Token no Download
+  // Canary Token no Download
   async downloadDocument(request: FastifyRequest, reply: FastifyReply) {
     const { id } = request.params as any;
-    const userId = (request as any).user?.id || request.headers['x-user-id'] || 'anonymous';
+    const userId = (request as any).user?.id || (request.headers['x-user-id'] as string) || 'anonymous';
     
     // Gera token único canário
     const token = crypto.randomBytes(16).toString('hex');
@@ -136,17 +153,29 @@ export class DocumentController {
       ip: request.ip
     });
 
-    const canaryUrl = `http://localhost:3000/api/canary/ping/${token}`;
+    // 🚨 DETECTA O HOST REAL DA RENDER AUTOMATICAMENTE:
+    const protocol = request.headers['x-forwarded-proto'] || 'https';
+    const host = request.headers.host;
+    const baseUrl = process.env.API_URL || `${protocol}://${host}`;
+    
+    const canaryUrl = `${baseUrl}/api/canary/ping/${token}`;
 
-    request.log.info({ event: 'DOCUMENTO_BAIXADO_COM_CANARIO', docId: id, userId, token });
+    request.log.info({ 
+      event: 'DOCUMENTO_BAIXADO_COM_CANARIO', 
+      docId: id, 
+      userId, 
+      token, 
+      canaryUrl 
+    });
 
     return reply.send({
       message: 'Download autorizado.',
       documentId: id,
       content: `CONTEÚDO SENSÍVEL DO DOCUMENTO ${id}... [TRACKER INVISÍVEL EMBUTIDO]`,
-      canaryUrl: canaryUrl // Retornando para facilitar o teste pelo usuário
+      canaryUrl: canaryUrl
     });
   }
+
   async drmViolation(request: FastifyRequest, reply: FastifyReply) {
     const { docId, type } = request.body as any;
     const userId = (request as any).user?.id || request.headers['x-user-id'] || 'anonymous';
