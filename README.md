@@ -1,0 +1,1 @@
+REDIS_URL="rediss://default:gQAAAAAABFZAAAIgcDE1YjhiYjI1MjUzZWM0MGVjOTQ1MTFkMGM5ZmE4MjRmYw@healthy-stud-284224.upstash.io:6379"
