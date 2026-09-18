@@ -31,6 +31,17 @@ export const buildServer = async (): Promise<FastifyInstance> => {
     connectionTimeout: 10000, // 10s máximo por TCP link
   });
 
+  // Permite requisições POST/PUT com body vazio mesmo se o header Content-Type for application/json
+  fastify.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    try {
+      const json = (body && typeof body === 'string' && body.trim() !== '') ? JSON.parse(body) : {};
+      done(null, json);
+    } catch (err: any) {
+      err.statusCode = 400;
+      done(err, undefined);
+    }
+  });
+
   // 2. Proteções de Borda (Security Headers via Helmet & CORS)
   await fastify.register(helmet, {
     contentSecurityPolicy: false,
