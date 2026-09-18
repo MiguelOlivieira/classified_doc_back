@@ -6,7 +6,6 @@ import { LoginSchema, RegisterUserSchema } from '../validators/schemas';
 import { userRepository } from '../repositories/userRepository';
 import { redisClient } from '../config/redis';
 import { logSecuredAuditEvent } from '../services/auditService';
-import { mfaFailures } from '../middlewares/stepUpAuth';
 
 export class AuthController {
   async login(request: FastifyRequest, reply: FastifyReply) {
@@ -14,14 +13,6 @@ export class AuthController {
     const ip = request.ip;
 
     const user = await userRepository.findByEmail(email);
-
-    if (user) {
-      const userMfaStatus = mfaFailures.get(user.id);
-      if (userMfaStatus && userMfaStatus.blockedUntil > Date.now()) {
-        request.log.warn({ event: "USUARIO_BLOQUEADO_LOGIN", userId: user.id });
-        return reply.code(429).send({ error: "Sua conta esta bloqueada por excesso de falhas no MFA." });
-      }
-    }
     
     if (!user) {
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -78,18 +69,14 @@ export class AuthController {
       return reply.code(401).send({ error: 'Usuário não configurou 2FA corretamente.' });
     }
 
-    // Higienização: remove espaços e aceita tolerância de 30 segundos no relógio
+    // Higienização e validação sem bloqueio
     const cleanCode = String(code).trim().replace(/\s+/g, '');
     const { valid: isValid } = verifySync({ token: cleanCode, secret: user.twoFactorSecret, epochTolerance: 30 });
     
     if (!isValid) {
-      // Registrar falha MFA
-      const failCount = (mfaFailures.get(user.id)?.count || 0) + 1;
-      mfaFailures.set(user.id, { count: failCount, blockedUntil: failCount >= 5 ? Date.now() + 15 * 60000 : 0 });
-      return reply.code(401).send({ error: 'Código 2FA inválido.' });
+      return reply.code(401).send({ error: 'Código 2FA incorreto. Verifique o aplicativo autenticador.' });
     }
 
-    mfaFailures.delete(user.id); // Reset failures
     await redisClient.del(`pre-session:${tempToken}`);
 
     const token = crypto.randomBytes(32).toString('hex');
