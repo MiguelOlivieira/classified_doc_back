@@ -78,7 +78,10 @@ export class AuthController {
       return reply.code(401).send({ error: 'Usuário não configurou 2FA corretamente.' });
     }
 
-    const { valid: isValid } = verifySync({ token: code, secret: user.twoFactorSecret });
+    // Higienização: remove espaços e aceita tolerância de 30 segundos no relógio
+    const cleanCode = String(code).trim().replace(/\s+/g, '');
+    const { valid: isValid } = verifySync({ token: cleanCode, secret: user.twoFactorSecret, epochTolerance: 30 });
+    
     if (!isValid) {
       // Registrar falha MFA
       const failCount = (mfaFailures.get(user.id)?.count || 0) + 1;
@@ -113,7 +116,7 @@ export class AuthController {
     if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 
     const secret = generateSecret();
-    const otpauth = generateURI({ issuer: 'AI-Studio-App', label: user.email, secret });
+    const otpauth = generateURI({ issuer: 'Sentinela-Terminal', label: user.email, secret });
     const qrCodeUrl = await qrcode.toDataURL(otpauth);
 
     await userRepository.update(user.id, { twoFactorSecret: secret });
@@ -129,7 +132,10 @@ export class AuthController {
     const user = await userRepository.findById(userId);
     if (!user || !user.twoFactorSecret) return reply.code(400).send({ error: 'MFA não iniciado.' });
 
-    const { valid: isValid } = verifySync({ token: code, secret: user.twoFactorSecret });
+    // Higienização: remove espaços e aceita tolerância de 30 segundos no relógio
+    const cleanCode = String(code).trim().replace(/\s+/g, '');
+    const { valid: isValid } = verifySync({ token: cleanCode, secret: user.twoFactorSecret, epochTolerance: 30 });
+    
     if (!isValid) return reply.code(400).send({ error: 'Código inválido.' });
 
     await userRepository.update(user.id, { isTwoFactorEnabled: true });

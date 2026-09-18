@@ -45,9 +45,11 @@ export const buildServer = async (): Promise<FastifyInstance> => {
     noSniff: true,
   });
 
-  await fastify.register(fastifyCors, {
-    origin: true, // Em produção, restrinja isso apenas para o domínio do frontend
+ await fastify.register(fastifyCors, {
+    origin: true,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id', 'x-device-fingerprint', 'idempotency-key', 'X-Requested-With'],
   });
 
   // 3. Middlewares Globais de Defesa
@@ -141,7 +143,7 @@ export const buildServer = async (): Promise<FastifyInstance> => {
   return fastify;
 };
 
-// Execução direta (Dev)
+// Execução direta
 buildServer().then(server => {
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
   server.listen({ port, host: '0.0.0.0' }, (err, address) => {
@@ -149,6 +151,6 @@ buildServer().then(server => {
       console.error(err);
       process.exit(1);
     }
-    console.log(`[API + FRONT-END] Servidor de Segurança Full-Stack rodando em ${address}`);
+    console.log(`[API + FRONT-END] Servidor rodando em ${address}`);
   });
 });
