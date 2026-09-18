@@ -1,4 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { userRepository } from '../repositories/userRepository';
+import { verifySync } from 'otplib';
 
 // Mapa em memória para rastrear falhas de MFA por usuário (Rate Limiting de Defesa Ativa)
 export const mfaFailures = new Map<string, { count: number; blockedUntil: number }>();
@@ -33,22 +35,38 @@ export const requireStepUpAuth = async (request: FastifyRequest, reply: FastifyR
       }
     }
 
-    const mfaToken = request.headers['x-mfa-token'];
+    // Verifica se o usuário já possui o MFA configurado
+    const user = await userRepository.findById(userId);
+    const hasMfaConfigured = !!(user && user.isTwoFactorEnabled && user.twoFactorSecret);
+
+    const mfaToken = request.headers['x-mfa-token'] as string;
     
     if (!mfaToken) {
       request.log.warn({ 
         event: 'AUTENTICACAO_ADAPTATIVA_EXIGIDA', 
-        userId
+        userId,
+        hasMfaConfigured
       });
       return reply.code(401).send({ 
         error: 'Autenticação adaptativa acionada',
         challenge: 'mfa_required',
-        message: 'Acesso a conteúdo restrito exige reconfirmação de token MFA em tempo real.'
+        hasMfaConfigured,
+        message: hasMfaConfigured 
+          ? 'Acesso a conteúdo restrito exige confirmação do token MFA em tempo real.'
+          : 'Você ainda não configurou o MFA com QR Code no seu perfil. Configure o autenticador para liberar acesso a documentos confidenciais/secretos.'
       });
     }
 
-    // Validação da chave MFA (Token TOTP ou Chave FIDO2)
-    const isValid = mfaToken === '123456'; // [Mock] Integração real com validador OTP
+    // Validação da chave MFA: validação real por TOTP caso cadastrado, ou bypass de desenvolvimento '123456'
+    let isValid = false;
+    const cleanToken = String(mfaToken).trim().replace(/\s+/g, '');
+    
+    if (cleanToken === '123456') {
+      isValid = true;
+    } else if (user && user.twoFactorSecret) {
+      const { valid } = verifySync({ token: cleanToken, secret: user.twoFactorSecret, epochTolerance: 30 });
+      isValid = valid;
+    }
 
     if (!isValid) {
       request.log.error({ event: 'FALHA_AUTENTICACAO_ADAPTATIVA', reason: 'Invalid MFA', userId });
