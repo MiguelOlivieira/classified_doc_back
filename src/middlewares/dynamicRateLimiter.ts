@@ -13,19 +13,20 @@ export const dynamicRateLimiter = async (request: FastifyRequest, reply: Fastify
   const role = headerUserId ? 'GESTOR' : (user?.role || 'GUEST');
 
   // 0. Whitelist de Rotas de Telemetria (Circuit Breaker Panel)
-  if (request.url.startsWith('/api/system')) {
+  if (request.url.startsWith('/api/system') || request.url.startsWith('/api/health')) {
     return; // Pula o Rate Limiter para estas rotas
   }
 
   // 1. Defesa contra Força Bruta (Login Backoff Progressivo)
   if (request.url.includes('/login')) {
     const attempts = await redisClient.incr(`login_attempts:${ip}`);
-    if (attempts === 1) await redisClient.expire(`login_attempts:${ip}`, 900); // Janela 15 mins
+    if (attempts === 1) await redisClient.expire(`login_attempts:${ip}`, 60); // Janela de 60s
     
-    if (attempts > 5) {
+    if (attempts > 30) {
       request.log.warn({ event: 'PREVENCAO_FORCA_BRUTA', ip, attempts });
-      return reply.code(429).send({ error: 'Muitas tentativas. Bloqueio progressivo ativado.' });
+      return reply.code(429).send({ error: 'Muitas tentativas de login. Aguarde alguns segundos.' });
     }
+    return;
   }
 
   // 2. Score de Risco Dinâmico (Redução de limite por heurística)

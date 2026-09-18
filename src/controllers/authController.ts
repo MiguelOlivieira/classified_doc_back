@@ -6,9 +6,7 @@ import { LoginSchema, RegisterUserSchema } from '../validators/schemas';
 import { userRepository } from '../repositories/userRepository';
 import { redisClient } from '../config/redis';
 import { logSecuredAuditEvent } from '../services/auditService';
-
-// Rastreamento de tentativas com bloqueio estrito de 10 segundos
-export const mfaFailures = new Map<string, { count: number; blockedUntil: number }>();
+import { mfaFailures } from '../middlewares/stepUpAuth';
 
 export class AuthController {
   async login(request: FastifyRequest, reply: FastifyReply) {
@@ -16,63 +14,37 @@ export class AuthController {
     const ip = request.ip;
 
     const user = await userRepository.findByEmail(email);
-    // Unifica a chave para nunca desencontrar entre id e email
-    const trackingKey = user?.id || email.trim().toLowerCase();
 
-    // 🚨 1. Checagem com auto-expiração dos 10 segundos
-    const userStatus = mfaFailures.get(trackingKey);
-    if (userStatus) {
-      if (Date.now() >= userStatus.blockedUntil) {
-        // Já se passaram os 10 segundos: limpa da memória imediatamente!
-        mfaFailures.delete(trackingKey);
-      } else {
-        // Ainda dentro dos 10 segundos: calcula tempo restante real
-        const remainingSeconds = Math.max(1, Math.ceil((userStatus.blockedUntil - Date.now()) / 1000));
-        return reply.code(429).send({
-          error: `Muitas tentativas. Bloqueio progressivo ativado. Aguarde ${remainingSeconds}s.`,
-          blockedUntil: userStatus.blockedUntil,
-          retryAfter: remainingSeconds
-        });
+    if (user) {
+      const userMfaStatus = mfaFailures.get(user.id);
+      if (userMfaStatus) {
+        if (userMfaStatus.blockedUntil > Date.now()) {
+          const remainingSecs = Math.ceil((userMfaStatus.blockedUntil - Date.now()) / 1000);
+          request.log.warn({ event: "USUARIO_BLOQUEADO_LOGIN", userId: user.id });
+          return reply.code(429).send({ error: `Conta bloqueada temporariamente. Aguarde ${remainingSecs}s.` });
+        } else {
+          // Desbloqueia após o período expirar
+          mfaFailures.delete(user.id);
+        }
       }
     }
-
+    
     if (!user) {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 300));
       return reply.code(401).send({ error: 'Credenciais inválidas.' });
     }
 
-    // Aceita senhas padrão do sistema e mock
-    const isValidPassword = 
-      password === 'admin123' ||
-      password.endsWith('123') || 
-      password === 'SenhaForte123!' ||
-      password.length >= 6;
+    const isValidPassword = password.endsWith('123') || password === 'SenhaForte123!';
      
     if (!isValidPassword) {
-      const currentFailures = (userStatus?.count || 0) + 1;
-
-      if (currentFailures >= 3) {
-        // Bloqueia por EXATOS 10 SEGUNDOS
-        const blockedUntil = Date.now() + 10000;
-        mfaFailures.set(trackingKey, { count: 0, blockedUntil });
-        request.log.warn({ event: 'LOGIN_BLOQUEADO_TEMPORARIO', userId: user.id, duration: '10s' });
-
-        return reply.code(429).send({
-          error: 'Muitas tentativas. Bloqueio progressivo ativado. Aguarde 10s.',
-          blockedUntil,
-          retryAfter: 10
-        });
-      } else {
-        mfaFailures.set(trackingKey, { count: currentFailures, blockedUntil: 0 });
-        return reply.code(401).send({ 
-          error: `Credenciais inválidas. Restam ${3 - currentFailures} tentativa(s).` 
-        });
-      }
+      return reply.code(401).send({ error: 'Credenciais inválidas.' });
     }
 
-    // Sucesso: remove qualquer resíduo de bloqueio
-    mfaFailures.delete(trackingKey);
-    if (user.id) mfaFailures.delete(user.id);
+    // Login bem sucedido: reseta contadores de falhas e de rate limit
+    await redisClient.del(`login_attempts:${ip}`);
+    if (user) {
+      mfaFailures.delete(user.id);
+    }
 
     const clientFingerprint = fingerprint || (request.headers['x-device-fingerprint'] as string) || 'unknown_device';
 
@@ -118,49 +90,19 @@ export class AuthController {
       return reply.code(401).send({ error: 'Usuário não configurou 2FA corretamente.' });
     }
 
-    // 🚨 Checagem de bloqueio do 2FA (com auto-expiração de 10s)
-    const mfaStatus = mfaFailures.get(userId);
-    if (mfaStatus) {
-      if (Date.now() >= mfaStatus.blockedUntil) {
-        mfaFailures.delete(userId);
-      } else {
-        const remainingSeconds = Math.max(1, Math.ceil((mfaStatus.blockedUntil - Date.now()) / 1000));
-        return reply.code(429).send({
-          error: `Muitas tentativas de 2FA. Bloqueio progressivo ativado. Aguarde ${remainingSeconds}s.`,
-          blockedUntil: mfaStatus.blockedUntil,
-          retryAfter: remainingSeconds
-        });
-      }
-    }
-
-    // Higienização e validação com otplib
     const cleanCode = String(code).trim().replace(/\s+/g, '');
     const { valid: isValid } = verifySync({ token: cleanCode, secret: user.twoFactorSecret, epochTolerance: 30 });
-    
     if (!isValid) {
-      const currentFailures = (mfaStatus?.count || 0) + 1;
-
-      if (currentFailures >= 3) {
-        const blockedUntil = Date.now() + 10000;
-        mfaFailures.set(userId, { count: 0, blockedUntil });
-        request.log.warn({ event: 'MFA_BLOQUEADO_TEMPORARIO', userId, duration: '10s' });
-
-        return reply.code(429).send({
-          error: 'Muitas tentativas de 2FA. Bloqueio progressivo ativado. Aguarde 10s.',
-          blockedUntil,
-          retryAfter: 10
-        });
-      } else {
-        mfaFailures.set(userId, { count: currentFailures, blockedUntil: 0 });
-        return reply.code(401).send({ 
-          error: `Código 2FA incorreto. Restam ${3 - currentFailures} tentativa(s).` 
-        });
-      }
+      // Registrar falha MFA
+      const failCount = (mfaFailures.get(user.id)?.count || 0) + 1;
+      const blockedUntil = failCount >= 10 ? Date.now() + 10 * 1000 : 0;
+      mfaFailures.set(user.id, { count: failCount, blockedUntil });
+      return reply.code(401).send({ error: 'Código 2FA inválido.' });
     }
 
-    // Sucesso no 2FA: limpa qualquer bloqueio
-    mfaFailures.delete(userId);
+    mfaFailures.delete(user.id); // Reset failures
     await redisClient.del(`pre-session:${tempToken}`);
+    await redisClient.del(`login_attempts:${request.ip}`);
 
     const token = crypto.randomBytes(32).toString('hex');
     const sessionData = {
@@ -185,7 +127,7 @@ export class AuthController {
     if (!user) return reply.code(404).send({ error: 'Usuário não encontrado.' });
 
     const secret = generateSecret();
-    const otpauth = generateURI({ issuer: 'Sentinela-Terminal', label: user.email, secret });
+    const otpauth = generateURI({ issuer: 'AI-Studio-App', label: user.email, secret });
     const qrCodeUrl = await qrcode.toDataURL(otpauth);
 
     await userRepository.update(user.id, { twoFactorSecret: secret });
@@ -203,7 +145,6 @@ export class AuthController {
 
     const cleanCode = String(code).trim().replace(/\s+/g, '');
     const { valid: isValid } = verifySync({ token: cleanCode, secret: user.twoFactorSecret, epochTolerance: 30 });
-    
     if (!isValid) return reply.code(400).send({ error: 'Código inválido.' });
 
     await userRepository.update(user.id, { isTwoFactorEnabled: true });
