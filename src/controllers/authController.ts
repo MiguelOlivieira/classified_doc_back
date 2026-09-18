@@ -7,23 +7,60 @@ import { userRepository } from '../repositories/userRepository';
 import { redisClient } from '../config/redis';
 import { logSecuredAuditEvent } from '../services/auditService';
 
+// Rastreamento de tentativas com bloqueio estrito de 10 segundos
+export const mfaFailures = new Map<string, { count: number; blockedUntil: number }>();
+
 export class AuthController {
   async login(request: FastifyRequest, reply: FastifyReply) {
     const { email, password, fingerprint } = LoginSchema.parse(request.body);
     const ip = request.ip;
 
     const user = await userRepository.findByEmail(email);
-    
+    const targetId = user?.id || email;
+
+    // 🚨 1. Checagem de Bloqueio Ativo (Limitado a 10s)
+    const userStatus = mfaFailures.get(targetId);
+    if (userStatus && userStatus.blockedUntil > Date.now()) {
+      const remainingSeconds = Math.ceil((userStatus.blockedUntil - Date.now()) / 1000);
+      return reply.code(429).send({
+        error: `Muitas tentativas. Bloqueio progressivo ativado. Aguarde ${remainingSeconds}s.`,
+        blockedUntil: userStatus.blockedUntil,
+        retryAfter: remainingSeconds
+      });
+    }
+
     if (!user) {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 500));
       return reply.code(401).send({ error: 'Credenciais inválidas.' });
     }
 
     const isValidPassword = password.endsWith('123') || password === 'SenhaForte123!';
      
     if (!isValidPassword) {
-      return reply.code(401).send({ error: 'Credenciais inválidas.' });
+      // Incrementa falhas de login
+      const currentFailures = (userStatus?.count || 0) + 1;
+
+      if (currentFailures >= 3) {
+        // Bloqueia por EXATOS 10 SEGUNDOS
+        const blockedUntil = Date.now() + 10000;
+        mfaFailures.set(user.id, { count: 0, blockedUntil });
+        request.log.warn({ event: 'LOGIN_BLOQUEADO_TEMPORARIO', userId: user.id, duration: '10s' });
+
+        return reply.code(429).send({
+          error: 'Muitas tentativas. Bloqueio progressivo ativado. Aguarde 10s.',
+          blockedUntil,
+          retryAfter: 10
+        });
+      } else {
+        mfaFailures.set(user.id, { count: currentFailures, blockedUntil: 0 });
+        return reply.code(401).send({ 
+          error: `Credenciais inválidas. Restam ${3 - currentFailures} tentativa(s).` 
+        });
+      }
     }
+
+    // Sucesso na senha: se tinha falhas acumuladas, limpa
+    mfaFailures.delete(user.id);
 
     const clientFingerprint = fingerprint || (request.headers['x-device-fingerprint'] as string) || 'unknown_device';
 
@@ -69,14 +106,45 @@ export class AuthController {
       return reply.code(401).send({ error: 'Usuário não configurou 2FA corretamente.' });
     }
 
-    // Higienização e validação sem bloqueio
+    // 🚨 Checagem de bloqueio do 2FA (10s)
+    const mfaStatus = mfaFailures.get(userId);
+    if (mfaStatus && mfaStatus.blockedUntil > Date.now()) {
+      const remainingSeconds = Math.ceil((mfaStatus.blockedUntil - Date.now()) / 1000);
+      return reply.code(429).send({
+        error: `Muitas tentativas de 2FA. Bloqueio progressivo ativado. Aguarde ${remainingSeconds}s.`,
+        blockedUntil: mfaStatus.blockedUntil,
+        retryAfter: remainingSeconds
+      });
+    }
+
+    // Higienização e validação com otplib
     const cleanCode = String(code).trim().replace(/\s+/g, '');
     const { valid: isValid } = verifySync({ token: cleanCode, secret: user.twoFactorSecret, epochTolerance: 30 });
     
     if (!isValid) {
-      return reply.code(401).send({ error: 'Código 2FA incorreto. Verifique o aplicativo autenticador.' });
+      const currentFailures = (mfaStatus?.count || 0) + 1;
+
+      if (currentFailures >= 3) {
+        // Bloqueia por EXATOS 10 SEGUNDOS
+        const blockedUntil = Date.now() + 10000;
+        mfaFailures.set(userId, { count: 0, blockedUntil });
+        request.log.warn({ event: 'MFA_BLOQUEADO_TEMPORARIO', userId, duration: '10s' });
+
+        return reply.code(429).send({
+          error: 'Muitas tentativas. Bloqueio progressivo ativado. Aguarde 10s.',
+          blockedUntil,
+          retryAfter: 10
+        });
+      } else {
+        mfaFailures.set(userId, { count: currentFailures, blockedUntil: 0 });
+        return reply.code(401).send({ 
+          error: `Código 2FA incorreto. Restam ${3 - currentFailures} tentativa(s).` 
+        });
+      }
     }
 
+    // Código correto: limpa bloqueios
+    mfaFailures.delete(userId);
     await redisClient.del(`pre-session:${tempToken}`);
 
     const token = crypto.randomBytes(32).toString('hex');
@@ -95,7 +163,6 @@ export class AuthController {
   }
 
   async generate2FA(request: FastifyRequest, reply: FastifyReply) {
-    // Requer estar logado
     const userId = request.headers['x-user-id'] as string;
     if (!userId) return reply.code(401).send({ error: 'Não autorizado.' });
 
@@ -119,7 +186,6 @@ export class AuthController {
     const user = await userRepository.findById(userId);
     if (!user || !user.twoFactorSecret) return reply.code(400).send({ error: 'MFA não iniciado.' });
 
-    // Higienização: remove espaços e aceita tolerância de 30 segundos no relógio
     const cleanCode = String(code).trim().replace(/\s+/g, '');
     const { valid: isValid } = verifySync({ token: cleanCode, secret: user.twoFactorSecret, epochTolerance: 30 });
     
