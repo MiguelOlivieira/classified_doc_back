@@ -25,18 +25,19 @@ export const RegisterUserSchema = z.object({
 });
 
 export const CreateDocumentSchema = z.object({
-  titulo: z.string()
-    .min(5, "Título muito curto")
-    .max(200, "Título excede o limite")
-    // Regex restritivo que impede caracteres de injeção de controle
-    .regex(/^[a-zA-Z0-9\s\-_\u00C0-\u00FF]+$/, "Caracteres inválidos detectados. Apenas alfanuméricos."),
-    
-  conteudo: z.string()
-    .max(1048576, "Conteúdo excede limite de 1MB."),
+  titulo: z.string().min(3).max(100),
+  conteudo: z.string().min(5),
+  tags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).max(10),
+  autor: z.string().min(2),
+  resumo: z.string().max(255),
     
   nivelAcesso: z.enum(['PUBLICO', 'INTERNO', 'CONFIDENCIAL', 'SECRETO', 'ULTRASSECRETO']),
   
-  departamento: z.string().max(100)
+  // 🚨 Validação: máximo 50 caracteres e apenas texto (sem números)
+  departamento: z.string()
+    .min(2, "Departamento deve ter pelo menos 2 caracteres")
+    .max(50, "Departamento não pode exceder 50 caracteres")
+    .regex(/^[^0-9]+$/, "Departamento não pode conter números, apenas texto.")
 });
 
 // Exemplo de uso no controller:
