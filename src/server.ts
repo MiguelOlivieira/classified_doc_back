@@ -52,11 +52,20 @@ export const buildServer = async (): Promise<FastifyInstance> => {
     noSniff: true,
   });
 
-  await fastify.register(fastifyCors, {
+await fastify.register(fastifyCors, {
     origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id', 'x-device-fingerprint', 'idempotency-key', 'X-Requested-With'],
+    allowedHeaders: [
+      'Content-Type', 
+      'Authorization', 
+      'x-user-id', 
+      'x-device-fingerprint', 
+      'x-document-level', 
+      'x-mfa-token',     
+      'idempotency-key', 
+      'X-Requested-With'
+    ],
   });
 
   // 3. Middlewares Globais de Defesa
