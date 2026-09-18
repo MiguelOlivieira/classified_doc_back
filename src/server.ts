@@ -1,9 +1,7 @@
-  import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import helmet from '@fastify/helmet';
 import fastifyCors from '@fastify/cors';
 import crypto from 'crypto';
-import path from 'path';
-import fs from 'fs';
 
 // Middlewares e Orquestração
 import { errorHandler } from './middlewares/errorHandler';
@@ -16,8 +14,6 @@ import { documentRoutes } from './routes/documentRoutes';
 import { authRoutes } from './routes/authRoutes';
 import { systemRoutes } from './routes/systemRoutes';
 import { canaryRoutes } from './routes/canaryRoutes';
-import fastifyMiddie from '@fastify/middie';
-import fastifyStatic from '@fastify/static';
 
 /**
  * Orquestração e Inicialização do Servidor Fastify
@@ -37,15 +33,15 @@ export const buildServer = async (): Promise<FastifyInstance> => {
 
   // 2. Proteções de Borda (Security Headers via Helmet & CORS)
   await fastify.register(helmet, {
-    contentSecurityPolicy: false, // Desativado em dev para permitir injetar scripts do Vite (HMR)
+    contentSecurityPolicy: false,
     hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
-    frameguard: { action: 'deny' }, 
+    frameguard: { action: 'deny' },
     hidePoweredBy: true,
     xssFilter: true,
     noSniff: true,
   });
 
- await fastify.register(fastifyCors, {
+  await fastify.register(fastifyCors, {
     origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -54,8 +50,7 @@ export const buildServer = async (): Promise<FastifyInstance> => {
 
   // 3. Middlewares Globais de Defesa
   fastify.setErrorHandler(errorHandler);
-  // fastify.addHook('preValidation', dynamicRateLimiter); // Omitindo rateLimiter global para não travar recursos estáticos
-  
+
   // 4. DECEPTION (Defesa Ativa): Rotas Isca / Honeypots
   fastify.all('/.env', async (request, reply) => {
     request.log.fatal({ event: 'HONEYPOT_ACIONADO', ip: request.ip });
@@ -98,47 +93,12 @@ export const buildServer = async (): Promise<FastifyInstance> => {
 
   fastify.get('/api/health', async () => ({ status: 'ok' }));
 
-  // Verifica se o front-end está rodando acoplado no mesmo repositório (Monorepo AI Studio)
-  const isMonorepo = fs.existsSync(path.join(process.cwd(), 'frontend'));
-
-  if (isMonorepo) {
-    // 6. Integração do Front-End React via Vite (Middleware) ou Arquivos Estáticos (Produção)
-    await fastify.register(fastifyMiddie);
-    
-    if (process.env.NODE_ENV !== 'production') {
-      try {
-        const vite = await import('vite');
-        const viteServer = await vite.createServer({
-          root: path.join(process.cwd(), 'frontend'),
-          server: { middlewareMode: true },
-          appType: 'spa',
-        });
-        // Adiciona o middleware Vite apenas para requisições que NÃO são da API
-        fastify.use((req, res, next) => {
-          if (req.url && req.url.startsWith('/api')) {
-            next();
-          } else {
-            viteServer.middlewares(req, res, next);
-          }
-        });
-      } catch (e) {
-        console.warn('[API] Vite não encontrado ou erro ao inicializar. Rodando em Modo API isolado.');
-      }
-    } else {
-      const distPath = path.join(process.cwd(), 'frontend/dist');
-      if (fs.existsSync(distPath)) {
-        fastify.register(fastifyStatic, {
-          root: distPath,
-          wildcard: false,
-        });
-        fastify.get('/*', (req, reply) => {
-          reply.sendFile('index.html');
-        });
-      }
-    }
-  } else {
-    console.log('🤖 [MODO ISOLADO] O Back-End está rodando de forma 100% isolada como uma API pura (Modo Standalone). O Front-End deve rodar em outro terminal.');
-  }
+  // 6. Rota raiz informando o status da API (Modo Standalone na Nuvem)
+  fastify.get('/', async () => ({
+    status: 'online',
+    service: 'Sentinela Security Backend API',
+    timestamp: new Date().toISOString()
+  }));
 
   return fastify;
 };
@@ -151,6 +111,6 @@ buildServer().then(server => {
       console.error(err);
       process.exit(1);
     }
-    console.log(`[API + FRONT-END] Servidor rodando em ${address}`);
+    console.log(`[API] Servidor Sentinela rodando em ${address}`);
   });
 });
