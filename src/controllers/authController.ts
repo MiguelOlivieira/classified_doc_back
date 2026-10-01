@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 import { generateSecret, generateURI, verifySync } from 'otplib';
 import qrcode from 'qrcode';
 import { LoginSchema, RegisterUserSchema } from '../validators/schemas';
@@ -34,7 +35,7 @@ export class AuthController {
       return reply.code(401).send({ error: 'Credenciais inválidas.' });
     }
 
-    const isValidPassword = password.endsWith('123') || password === 'SenhaForte123!';
+    const isValidPassword = await bcrypt.compare(password, user.passwordHash);
      
     if (!isValidPassword) {
       return reply.code(401).send({ error: 'Credenciais inválidas.' });
@@ -69,7 +70,14 @@ export class AuthController {
     return reply.send({ 
       message: 'Autenticado com sucesso.',
       token, 
-      role: user.role 
+      role: user.role,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        nome: user.email.split('@')[0], // derived from email or db
+        username: user.email.split('@')[0],
+      }
     });
   }
 
@@ -116,7 +124,18 @@ export class AuthController {
     await redisClient.setex(`session:${token}`, 28800, JSON.stringify(sessionData));
     await logSecuredAuditEvent(user.id, 'LOGIN_USUARIO_2FA', { ip: request.ip, fingerprint });
 
-    return reply.send({ message: 'Autenticado com sucesso.', token, role: user.role });
+    return reply.send({ 
+      message: 'Autenticado com sucesso.', 
+      token, 
+      role: user.role,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        nome: user.email.split('@')[0],
+        username: user.email.split('@')[0],
+      }
+    });
   }
 
   async generate2FA(request: FastifyRequest, reply: FastifyReply) {
@@ -167,6 +186,29 @@ export class AuthController {
       return reply.code(403).send({ error: 'Apenas administradores podem registrar novos operadores.' });
     }
     const data = RegisterUserSchema.parse(request.body);
+    
+    const existingUser = await userRepository.findByEmail(data.email);
+    if (existingUser) {
+      return reply.code(400).send({ error: 'E-mail já cadastrado.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+    
+    // As userRepository does not have a create method, we should import db and insert directly, 
+    // or we can create it. For simplicity we use the db instance here.
+    // Wait, let me just add it using db here, or I'll add create in userRepository next.
+    // For now I'll use db directly. I need to import db and users from schema.
+    
+    // ... Actually I will just update userRepository later. Let's do it right.
+    // We will call userRepository.create
+    const newUser = await userRepository.create({
+      id: `usr-${crypto.randomUUID()}`,
+      email: data.email,
+      passwordHash: hashedPassword,
+      role: data.cargo.toUpperCase(),
+      isTwoFactorEnabled: false
+    });
+
     request.log.info({ event: 'NOVO_USUARIO_CADASTRADO', newUsername: data.username, adminId: userId });
     return reply.status(201).send({ 
       message: 'Operador registrado com sucesso.',

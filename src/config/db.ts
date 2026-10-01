@@ -1,32 +1,20 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../db/schema';
-import { getVaultSecret } from './vault';
+import dotenv from 'dotenv';
+import path from 'path';
 
-/**
- * Configuração do Banco de Dados com Suporte a PgBouncer
- * 
- * O ORM escolhido é o Drizzle, por ser leve, type-safe (TypeScript-first)
- * e não ter problemas de performance com Edge/Serverless.
- */
+// Load .env
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-export const setupDatabase = async () => {
-  // O Segredo de banco é buscado do Vault, jamais de .env fixo em código crítico
-  const connectionString = await getVaultSecret('DATABASE_URL');
-  
-  // Cliente Postgres otimizado para rodar atrás de um Pool de Conexões (PgBouncer)
-  const queryClient = postgres(connectionString, {
-    // IMPORTANTE: prepare: false é mandatório quando se usa PgBouncer no modo 'Transaction'
-    prepare: false, 
-    max: 20,          // Tamanho máximo do pool de conexões deste nó Fastify
-    idle_timeout: 30, // Timeout de inatividade para liberar recursos
-  });
+const connectionString = process.env.APP_DATABASE_URL || process.env.DATABASE_URL || 'postgres://localhost:5432/mock';
 
-  const db = drizzle(queryClient, { schema });
-  
-  return db;
-};
+// Cliente Postgres otimizado para rodar atrás de um Pool de Conexões (PgBouncer)
+const queryClient = postgres(connectionString, {
+  // IMPORTANTE: prepare: false é mandatório quando se usa PgBouncer no modo 'Transaction' (Supabase Pooler usa PgBouncer)
+  prepare: false, 
+  max: 20,
+  idle_timeout: 30,
+});
 
-// Instância exportável (mock para dev)
-const mockClient = postgres('postgres://localhost:5432/mock', { max: 1 });
-export const db = drizzle(mockClient, { schema });
+export const db = drizzle(queryClient, { schema });

@@ -1,11 +1,11 @@
-import { pgTable, uuid, text, timestamp, varchar, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, varchar, boolean } from 'drizzle-orm/pg-core';
 
 /**
  * Esquema do Banco de Dados (Drizzle ORM)
  * Define a tipagem exata e a estrutura das tabelas no PostgreSQL.
  */
 export const documents = pgTable('documents', {
-  id: uuid('id').primaryKey().defaultRandom(),
+  id: varchar('id', { length: 50 }).primaryKey(),
   titulo: varchar('titulo', { length: 200 }).notNull(),
   conteudo: text('conteudo').notNull(),
   nivelAcesso: varchar('nivel_acesso', { length: 50 }).notNull(),
@@ -14,7 +14,7 @@ export const documents = pgTable('documents', {
 });
 
 export const users = pgTable('users', {
-  id: uuid('id').primaryKey().defaultRandom(),
+  id: varchar('id', { length: 50 }).primaryKey(),
   email: varchar('email', { length: 255 }).notNull().unique(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   role: varchar('role', { length: 50 }).notNull(),

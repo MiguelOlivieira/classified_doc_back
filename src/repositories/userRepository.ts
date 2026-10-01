@@ -3,59 +3,6 @@ import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { redisClient } from '../config/redis';
 
-const INITIAL_USERS: any[] = [
-  {
-    id: 'usr-001',
-    email: 'admin@sentinela.gov',
-    username: 'admin',
-    role: 'GESTOR',
-    twoFactorSecret: null,
-    isTwoFactorEnabled: false
-  },
-  {
-    id: 'usr-admin-001',
-    email: 'admin@example.com',
-    username: 'admin',
-    role: 'GESTOR',
-    twoFactorSecret: null,
-    isTwoFactorEnabled: false
-  },
-  {
-    id: 'usr-002',
-    email: 'agente@sentinela.gov',
-    username: 'agente',
-    role: 'OPERADOR',
-    twoFactorSecret: null,
-    isTwoFactorEnabled: false
-  },
-  {
-    id: 'usr-003',
-    email: 'analista@sentinela.gov',
-    username: 'analista',
-    role: 'ANALISTA',
-    twoFactorSecret: null,
-    isTwoFactorEnabled: false
-  },
-  {
-    id: 'usr-004',
-    email: 'usuario@sentinela.gov',
-    username: 'usuario',
-    role: 'USUARIO',
-    twoFactorSecret: null,
-    isTwoFactorEnabled: false
-  },
-  {
-    id: 'usr-005',
-    email: 'visitante@sentinela.gov',
-    username: 'visitante',
-    role: 'VISITANTE',
-    twoFactorSecret: null,
-    isTwoFactorEnabled: false
-  },
-];
-
-const mockUsers = new Map<string, any>(INITIAL_USERS.map(u => [u.email, { ...u }]));
-
 /**
  * Repository Pattern: Isolamento das Queries de Usuário
  */
@@ -76,56 +23,52 @@ export class UserRepository {
   }
 
   async findByEmail(email: string) {
-    console.log(`[DB] Buscando usuário ${email} no PostgreSQL (Mock)`);
-    let user = mockUsers.get(email);
-    if (!user) {
-      let mockId = 'usr-002';
-      if (email.includes('admin')) mockId = 'usr-001';
-      else if (email.includes('analista')) mockId = 'usr-003';
-      else if (email.includes('usuario')) mockId = 'usr-004';
-      else if (email.includes('visitante')) mockId = 'usr-005';
-      
-      user = {
-        id: mockId,
-        email,
-        username: email.split('@')[0],
-        passwordHash: 'hash',
-        role: email.includes('admin') ? 'GESTOR' : 'ANALISTA',
-        twoFactorSecret: null,
-        isTwoFactorEnabled: false
-      };
-      mockUsers.set(email, user);
+    console.log(`[DB] Buscando usuário ${email} no PostgreSQL`);
+    const results = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    
+    if (results.length === 0) {
+      return null;
     }
-    return this.enrichWithRedis(user);
+    
+    return this.enrichWithRedis(results[0]);
   }
 
   async findById(id: string) {
-    for (const user of mockUsers.values()) {
-      if (user.id === id) {
-        return this.enrichWithRedis(user);
-      }
+    const results = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    
+    if (results.length === 0) {
+      return null;
     }
-    return null;
+    
+    return this.enrichWithRedis(results[0]);
+  }
+
+  async create(data: any) {
+    const result = await db.insert(users).values(data).returning();
+    return result[0];
   }
 
   async update(id: string, data: Partial<any>) {
-    for (const user of mockUsers.values()) {
-      if (user.id === id) {
-        Object.assign(user, data);
-        try {
-          await redisClient.setex(
-            `user-2fa:${id}`,
-            86400 * 30, // 30 dias de persistência
-            JSON.stringify({
-              twoFactorSecret: user.twoFactorSecret,
-              isTwoFactorEnabled: user.isTwoFactorEnabled,
-            })
-          );
-        } catch (e) {
-          // Fallback gracioso
-        }
-        return user;
+    const result = await db.update(users)
+      .set(data)
+      .where(eq(users.id, id))
+      .returning();
+      
+    if (result.length > 0) {
+      const user = result[0];
+      try {
+        await redisClient.setex(
+          `user-2fa:${id}`,
+          86400 * 30, // 30 dias de persistência
+          JSON.stringify({
+            twoFactorSecret: user.twoFactorSecret,
+            isTwoFactorEnabled: user.isTwoFactorEnabled,
+          })
+        );
+      } catch (e) {
+        // Fallback gracioso
       }
+      return user;
     }
     return null;
   }
