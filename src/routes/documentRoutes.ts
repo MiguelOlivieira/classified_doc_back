@@ -22,6 +22,12 @@ export async function documentRoutes(fastify: FastifyInstance) {
   fastify.post('/:id/request-access', documentController.requestAccess.bind(documentController));
   fastify.post('/approve-access/:actionId', documentController.approveAccess.bind(documentController));
   
+  // Endpoint para logs do frontend
+  fastify.post('/frontend-log', async (request, reply) => {
+    console.log('[FRONTEND LOG]', request.body);
+    return reply.send({ ok: true });
+  });
+
   // Fluxo de desclassificação (Regra dos Quatro Olhos)
   fastify.post('/:id/declassify', documentController.declassifyRequest.bind(documentController));
   fastify.post('/approve/:actionId', documentController.approveDeclassify.bind(documentController));
