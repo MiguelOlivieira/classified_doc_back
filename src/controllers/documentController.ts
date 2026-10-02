@@ -18,7 +18,7 @@ export const canaryTokens = new Map<string, { userId: string; docId: string; ip:
  * Controller de Documentos
  */
 export class DocumentController {
-  
+
   async getAllDocuments(request: FastifyRequest, reply: FastifyReply) {
     const docs = await documentRepository.findAll();
     return reply.send({ status: 'Success', documents: docs });
@@ -27,7 +27,7 @@ export class DocumentController {
   async createDocument(request: FastifyRequest, reply: FastifyReply) {
     const userId = (request as any).user?.id || (request.headers['x-user-id'] as string);
     const body: any = request.body;
-    
+
     // We expect { documento: { id, titulo, conteudo, nivelAcesso, departamento } }
     const docData = body.documento;
     if (!docData) {
@@ -57,7 +57,7 @@ export class DocumentController {
     const userId = (request as any).user?.id || (request.headers['x-user-id'] as string) || 'anonymous';
     const clientDocLevel = (request.headers['x-document-level'] as string) || '';
     const ip = request.ip;
-    
+
     // HONEYTOKEN DETECTADO
     if (id === 'DOC-SECRET-PAYROLL-HONEYTOKEN') {
       request.log.fatal({ event: 'HONEYTOKEN_ACESSADO', userId, ip: request.ip });
@@ -82,7 +82,7 @@ export class DocumentController {
       const allowedUsers = grantedFourEyesAccess.get(id);
       if (!allowedUsers || !allowedUsers.has(userId)) {
         request.log.warn({ event: 'REGRA_QUATRO_OLHOS_EXIGIDA', userId, docId: id });
-        return reply.code(403).send({ 
+        return reply.code(403).send({
           error: 'Este documento exige a Regra dos Quatro Olhos. Solicite acesso e aguarde aprovação de outro administrador.',
           challenge: 'four_eyes_required'
         });
@@ -98,12 +98,12 @@ export class DocumentController {
     // 🚨 Força o Step-up Auth (MFA Real) para documentos Confidenciais, Secretos e Ultrassecretos
     (request as any).documentLevel = nivelAcesso;
     await requireStepUpAuth(request, reply);
-    
+
     // Se requireStepUpAuth bloqueou (seja por não ter 2FA configurado ou por token inválido), para imediatamente!
     if (reply.sent) {
       return;
     }
-    
+
     // 🚨 LOG DE AUDITORIA: REGISTRA ABERTURA DO DOCUMENTO NA RENDER
     request.log.info({
       event: 'DOCUMENTO_VISUALIZADO',
@@ -121,16 +121,16 @@ export class DocumentController {
         ip,
         fingerprint: request.headers['x-device-fingerprint'] || 'desconhecido'
       });
-    } catch (e) {}
+    } catch (e) { }
 
     const isGestor = (request as any).user?.role === 'GESTOR' || request.headers['x-user-role'] === 'GESTOR';
     if (doc && !isGestor) {
       doc.conteudo = maskSensitiveData(doc.conteudo);
     }
 
-    return { 
-      status: 'Success', 
-      document: doc || { id, nivelAcesso, status: 'ATIVO' } 
+    return {
+      status: 'Success',
+      document: doc || { id, nivelAcesso, status: 'ATIVO' }
     };
   }
 
@@ -138,7 +138,7 @@ export class DocumentController {
   async requestAccess(request: FastifyRequest, reply: FastifyReply) {
     const userId = (request as any).user?.id || request.headers['x-user-id'] || 'anonymous';
     const { id } = request.params as any;
-    
+
     const actionId = await requestHighImpactAction(userId, 'ACESSO_ULTRASSECRETO', { docId: id });
     return reply.code(202).send({ message: 'Solicitação de acesso registrada. Aguardando aprovação de autoridade superior.', actionId });
   }
@@ -147,20 +147,20 @@ export class DocumentController {
   async approveAccess(request: FastifyRequest, reply: FastifyReply) {
     const approverId = (request as any).user?.id || request.headers['x-user-id'] || 'anonymous';
     const { actionId } = request.params as any;
-    
+
     try {
       const pendingAction = getPendingAction(actionId);
       if (!pendingAction) throw new Error('Solicitação inexistente.');
-      
+
       const docId = pendingAction.payload.docId;
       const requesterId = pendingAction.requesterId;
 
       await approveHighImpactAction(approverId, actionId);
-      
+
       if (!grantedFourEyesAccess.has(docId)) {
         grantedFourEyesAccess.set(docId, new Set());
       }
-      
+
       grantedFourEyesAccess.get(docId)!.add(requesterId);
       return reply.code(200).send({ message: 'Acesso concedido com sucesso pela Regra dos 4 Olhos.' });
     } catch (err: any) {
@@ -172,7 +172,7 @@ export class DocumentController {
   async declassifyRequest(request: FastifyRequest, reply: FastifyReply) {
     const userId = (request as any).user?.id;
     const { id } = request.params as any;
-    
+
     const parsedBody = CreateDocumentSchema.partial().parse(request.body);
     const actionId = await requestHighImpactAction(userId, 'DESCLASSIFICAR_DOCUMENTO', { docId: id, newLevel: parsedBody.nivelAcesso });
     return reply.code(202).send({ message: 'Solicitação registrada. Aguardando aprovação de autoridade superior.', actionId });
@@ -182,7 +182,7 @@ export class DocumentController {
   async approveDeclassify(request: FastifyRequest, reply: FastifyReply) {
     const approverId = (request as any).user?.id;
     const { actionId } = request.params as any;
-    
+
     await approveHighImpactAction(approverId, actionId);
     return reply.code(200).send({ message: 'Ação executada com sucesso no Banco de Dados.' });
   }
@@ -191,7 +191,7 @@ export class DocumentController {
   async downloadDocument(request: FastifyRequest, reply: FastifyReply) {
     const { id } = request.params as any;
     const userId = (request as any).user?.id || (request.headers['x-user-id'] as string) || 'anonymous';
-    
+
     const token = crypto.randomBytes(16).toString('hex');
     canaryTokens.set(token, {
       userId,
@@ -204,12 +204,12 @@ export class DocumentController {
     const baseUrl = process.env.API_URL || `${protocol}://${host}`;
     const canaryUrl = `${baseUrl}/api/canary/ping/${token}`;
 
-    request.log.info({ 
-      event: 'DOCUMENTO_BAIXADO_COM_CANARIO', 
-      docId: id, 
-      userId, 
-      token, 
-      canaryUrl 
+    request.log.info({
+      event: 'DOCUMENTO_BAIXADO_COM_CANARIO',
+      docId: id,
+      userId,
+      token,
+      canaryUrl
     });
 
     return reply.send({
