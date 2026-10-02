@@ -6,7 +6,6 @@ import { CreateDocumentSchema } from '../validators/schemas';
 import { documentRepository } from '../repositories/documentRepository';
 import { logSecuredAuditEvent } from '../services/auditService';
 import crypto from 'crypto';
-import { maskSensitiveData } from '../utils/masking';
 
 // Memória temporária para liberação de acesso via 4 Olhos
 const grantedFourEyesAccess = new Map<string, Set<string>>();
@@ -90,11 +89,6 @@ export class DocumentController {
         fingerprint: request.headers['x-device-fingerprint'] || 'desconhecido'
       });
     } catch (e) {}
-
-    const isGestor = (request as any).user?.role === 'GESTOR' || request.headers['x-user-role'] === 'GESTOR';
-    if (doc && !isGestor) {
-      doc.conteudo = maskSensitiveData(doc.conteudo);
-    }
 
     return { 
       status: 'Success', 

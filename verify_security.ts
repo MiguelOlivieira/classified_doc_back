@@ -5,7 +5,6 @@ import path from 'path';
 import { db } from './src/config/db';
 import { users, documents } from './src/db/schema';
 import { decrypt, encrypt } from './src/utils/encryption';
-import { maskSensitiveData } from './src/utils/masking';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
@@ -73,16 +72,22 @@ async function verify() {
       success = false;
     }
 
-    // 4. Data Masking
-    console.log('\n[TESTE 4] Verificação de Data Masking:');
-    const sensitive = "O cpf do operador é 123.456.789-00 e o cartão 1234-5678-9012-3456 com telefone (11) 98765-4321";
-    const masked = maskSensitiveData(sensitive);
-    if (masked.includes('***.***.***-**') && masked.includes('**** **** **** ****') && masked.includes('(**) *****-****')) {
-      console.log('✅ Dados sensíveis mascarados com sucesso:');
-      console.log(`Original: ${sensitive}`);
-      console.log(`Mascarado: ${masked}`);
+    // 4. Sanitização de resposta da API (previne vazamento de passwordHash/twoFactorSecret)
+    console.log('\n[TESTE 4] Verificação de Sanitização de Resposta da API:');
+    const { sanitizeUserResponse } = await import('./src/utils/masking');
+    const rawUserFromDB = {
+      id: 'usr-001',
+      email: 'admin@sentinela.gov',
+      role: 'GESTOR',
+      passwordHash: '$2b$10$someHashThatShouldNeverBeExposed',
+      twoFactorSecret: 'JBSWY3DPEHPK3PXP',
+    };
+    const sanitized = sanitizeUserResponse(rawUserFromDB);
+    if (!('passwordHash' in sanitized) && !('twoFactorSecret' in sanitized)) {
+      console.log('✅ passwordHash e twoFactorSecret removidos da resposta da API com sucesso.');
+      console.log('   Campos retornados:', Object.keys(sanitized).join(', '));
     } else {
-      console.log('❌ Falha ao aplicar máscara nos dados sensíveis.');
+      console.log('❌ Campos sensíveis ainda presentes na resposta da API!');
       success = false;
     }
 

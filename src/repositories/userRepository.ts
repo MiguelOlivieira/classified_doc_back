@@ -24,7 +24,13 @@ export class UserRepository {
 
   async findByEmail(email: string) {
     console.log(`[DB] Buscando usuário ${email} no PostgreSQL`);
-    const results = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    let results;
+    try {
+      results = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    } catch (err: any) {
+      console.error('[DB ERROR] Failed query cause:', err.cause || err);
+      throw err;
+    }
     
     if (results.length === 0) {
       return null;

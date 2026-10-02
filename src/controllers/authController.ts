@@ -8,6 +8,7 @@ import { userRepository } from '../repositories/userRepository';
 import { redisClient } from '../config/redis';
 import { logSecuredAuditEvent } from '../services/auditService';
 import { mfaFailures } from '../middlewares/stepUpAuth';
+import { sanitizeUserResponse } from '../utils/masking';
 
 export class AuthController {
   async login(request: FastifyRequest, reply: FastifyReply) {
@@ -71,13 +72,13 @@ export class AuthController {
       message: 'Autenticado com sucesso.',
       token, 
       role: user.role,
-      user: {
+      user: sanitizeUserResponse({
         id: user.id,
         email: user.email,
         role: user.role,
-        nome: user.email.split('@')[0], // derived from email or db
+        nome: user.email.split('@')[0],
         username: user.email.split('@')[0],
-      }
+      })
     });
   }
 
@@ -128,13 +129,13 @@ export class AuthController {
       message: 'Autenticado com sucesso.', 
       token, 
       role: user.role,
-      user: {
+      user: sanitizeUserResponse({
         id: user.id,
         email: user.email,
         role: user.role,
         nome: user.email.split('@')[0],
         username: user.email.split('@')[0],
-      }
+      })
     });
   }
 
