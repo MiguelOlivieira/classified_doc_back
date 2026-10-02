@@ -10,6 +10,17 @@ import { logSecuredAuditEvent } from '../services/auditService';
 import { mfaFailures } from '../middlewares/stepUpAuth';
 import { sanitizeUserResponse } from '../utils/masking';
 
+
+const getRoleLevelNum = (role?: string): number => {
+  if (!role) return 1;
+  const r = role.toUpperCase();
+  if (r === 'GESTOR' || r === 'ADMIN') return 5;
+  if (r === 'OPERADOR') return 4;
+  if (r === 'ANALISTA') return 3;
+  if (r === 'USUARIO') return 2;
+  return 1;
+};
+
 export class AuthController {
   async login(request: FastifyRequest, reply: FastifyReply) {
     const { email, password, fingerprint } = LoginSchema.parse(request.body);
@@ -72,12 +83,19 @@ export class AuthController {
       message: 'Autenticado com sucesso.',
       token, 
       role: user.role,
+      userId: user.id,
       user: sanitizeUserResponse({
         id: user.id,
         email: user.email,
         role: user.role,
         nome: user.email.split('@')[0],
         username: user.email.split('@')[0],
+        cargo: user.role,
+        nivelAcesso: getRoleLevelNum(user.role),
+        departamento: 'GERAL',
+        dataCriacao: user.createdAt?.toISOString() || new Date().toISOString(),
+        ultimoAcesso: new Date().toISOString(),
+        status: 'ATIVO',
       })
     });
   }
@@ -129,12 +147,19 @@ export class AuthController {
       message: 'Autenticado com sucesso.', 
       token, 
       role: user.role,
+      userId: user.id,
       user: sanitizeUserResponse({
         id: user.id,
         email: user.email,
         role: user.role,
         nome: user.email.split('@')[0],
         username: user.email.split('@')[0],
+        cargo: user.role,
+        nivelAcesso: getRoleLevelNum(user.role),
+        departamento: 'GERAL',
+        dataCriacao: user.createdAt?.toISOString() || new Date().toISOString(),
+        ultimoAcesso: new Date().toISOString(),
+        status: 'ATIVO',
       })
     });
   }

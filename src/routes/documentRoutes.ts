@@ -13,7 +13,8 @@ export async function documentRoutes(fastify: FastifyInstance) {
   fastify.post('/', documentController.createDocument.bind(documentController));
 
   // Buscar documento
-  
+  fastify.get('/:id', documentController.getDocument.bind(documentController));
+
   // Download documento com Canary Token
   fastify.get('/:id/download', documentController.downloadDocument.bind(documentController));
   
