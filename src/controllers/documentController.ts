@@ -19,6 +19,38 @@ export const canaryTokens = new Map<string, { userId: string; docId: string; ip:
  */
 export class DocumentController {
   
+  async getAllDocuments(request: FastifyRequest, reply: FastifyReply) {
+    const docs = await documentRepository.findAll();
+    return reply.send({ status: 'Success', documents: docs });
+  }
+
+  async createDocument(request: FastifyRequest, reply: FastifyReply) {
+    const userId = (request as any).user?.id || (request.headers['x-user-id'] as string);
+    const body: any = request.body;
+    
+    // We expect { documento: { id, titulo, conteudo, nivelAcesso, departamento } }
+    const docData = body.documento;
+    if (!docData) {
+      return reply.code(400).send({ error: 'Dados do documento não fornecidos.' });
+    }
+
+    try {
+      const created = await documentRepository.createDocument({
+        id: docData.id,
+        titulo: docData.titulo,
+        conteudo: docData.conteudo,
+        nivelAcesso: docData.nivelAcesso.toString(),
+        departamento: docData.departamento
+      });
+
+      request.log.info({ event: 'DOCUMENTO_CRIADO', docId: created.id, userId });
+      return reply.code(201).send({ status: 'Success', document: created });
+    } catch (err: any) {
+      request.log.error({ event: 'ERRO_CRIAR_DOCUMENTO', error: err.message });
+      return reply.code(500).send({ error: 'Falha ao salvar no banco.' });
+    }
+  }
+
   // Consulta de documento (Com Circuit Breaker + Honeytoken + StepUp Auth + 4 Eyes)
   async getDocument(request: FastifyRequest, reply: FastifyReply) {
     const { id } = request.params as any;

@@ -6,8 +6,13 @@ import { documentController } from '../controllers/documentController';
  * Mapeia os endpoints RESTful para os respectivos métodos do Controller.
  */
 export async function documentRoutes(fastify: FastifyInstance) {
+  // Listar todos (metadata)
+  fastify.get('/', documentController.getAllDocuments.bind(documentController));
+
+  // Criar documento
+  fastify.post('/', documentController.createDocument.bind(documentController));
+
   // Buscar documento
-  fastify.get('/:id', documentController.getDocument.bind(documentController));
   
   // Download documento com Canary Token
   fastify.get('/:id/download', documentController.downloadDocument.bind(documentController));
