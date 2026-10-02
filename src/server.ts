@@ -59,7 +59,8 @@ await fastify.register(fastifyCors, {
     allowedHeaders: [
       'Content-Type', 
       'Authorization', 
-      'x-user-id', 
+      'x-user-id',
+      'x-user-role',
       'x-device-fingerprint', 
       'x-document-level', 
       'x-mfa-token',     
