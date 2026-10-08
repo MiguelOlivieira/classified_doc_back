@@ -118,7 +118,7 @@ export class AuthController {
     }
 
     const cleanCode = String(code).trim().replace(/\s+/g, '');
-    const { valid: isValid } = verifySync({ token: cleanCode, secret: user.twoFactorSecret, epochTolerance: 30 });
+    const { valid: isValid } = verifySync({ token: cleanCode, secret: user.twoFactorSecret, window: 1 });
     if (!isValid) {
       // Registrar falha MFA
       const failCount = (mfaFailures.get(user.id)?.count || 0) + 1;
@@ -189,7 +189,7 @@ export class AuthController {
     if (!user || !user.twoFactorSecret) return reply.code(400).send({ error: 'MFA não iniciado.' });
 
     const cleanCode = String(code).trim().replace(/\s+/g, '');
-    const { valid: isValid } = verifySync({ token: cleanCode, secret: user.twoFactorSecret, epochTolerance: 30 });
+    const { valid: isValid } = verifySync({ token: cleanCode, secret: user.twoFactorSecret, window: 1 });
     if (!isValid) return reply.code(400).send({ error: 'Código inválido.' });
 
     await userRepository.update(user.id, { isTwoFactorEnabled: true });

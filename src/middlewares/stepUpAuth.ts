@@ -61,7 +61,7 @@ export const requireStepUpAuth = async (request: FastifyRequest, reply: FastifyR
     let isValid = false;
     const cleanToken = String(mfaToken).trim().replace(/\s+/g, '');
     if (user && user.twoFactorSecret) {
-      const { valid } = verifySync({ token: cleanToken, secret: user.twoFactorSecret, epochTolerance: 30 });
+      const { valid } = verifySync({ token: cleanToken, secret: user.twoFactorSecret, window: 1 });
       isValid = valid;
     }
 
