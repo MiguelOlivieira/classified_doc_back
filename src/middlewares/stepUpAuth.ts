@@ -52,14 +52,8 @@ export const requireStepUpAuth = async (request: FastifyRequest, reply: FastifyR
     request.log.info({ event: 'DEBUG_STEPUP', userId, cleanToken, secretPresent: !!(user?.twoFactorSecret) });
 
     if (user && user.twoFactorSecret) {
-      // Checa a janela atual, a anterior (-30s) e a próxima (+30s) para tolerância
-      for (let i = -1; i <= 1; i++) {
-        const result = verifySync({ token: cleanToken, secret: user.twoFactorSecret, epoch: Date.now() + (i * 30000) });
-        if (result.valid) {
-          isValid = true;
-          break;
-        }
-      }
+      const result = verifySync({ token: cleanToken, secret: user.twoFactorSecret, epochTolerance: 30 });
+      isValid = result.valid;
       request.log.info({ event: 'DEBUG_STEPUP_RESULT', isValid });
     }
 

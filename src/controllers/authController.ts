@@ -118,11 +118,8 @@ export class AuthController {
     }
 
     const cleanCode = String(code).trim().replace(/\s+/g, '');
-    let isValid = false;
-    for (let i = -1; i <= 1; i++) {
-      const result = verifySync({ token: cleanCode, secret: user.twoFactorSecret, epoch: Date.now() + (i * 30000) });
-      if (result.valid) { isValid = true; break; }
-    }
+    const result = verifySync({ token: cleanCode, secret: user.twoFactorSecret, epochTolerance: 30 });
+    const isValid = result.valid;
     
     if (!isValid) {
       // Registrar falha MFA
@@ -194,11 +191,8 @@ export class AuthController {
     if (!user || !user.twoFactorSecret) return reply.code(400).send({ error: 'MFA não iniciado.' });
 
     const cleanCode = String(code).trim().replace(/\s+/g, '');
-    let isValid = false;
-    for (let i = -1; i <= 1; i++) {
-      const result = verifySync({ token: cleanCode, secret: user.twoFactorSecret, epoch: Date.now() + (i * 30000) });
-      if (result.valid) { isValid = true; break; }
-    }
+    const result = verifySync({ token: cleanCode, secret: user.twoFactorSecret, epochTolerance: 30 });
+    const isValid = result.valid;
     
     if (!isValid) return reply.code(400).send({ error: 'Código inválido.' });
 
