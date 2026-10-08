@@ -91,7 +91,7 @@ export class AuthController {
         nome: user.email.split('@')[0],
         username: user.email.split('@')[0],
         cargo: user.role,
-        nivelAcesso: getRoleLevelNum(user.role),
+        nivelAcesso: user.nivelAcesso ?? getRoleLevelNum(user.role),
         departamento: 'GERAL',
         dataCriacao: user.createdAt?.toISOString() || new Date().toISOString(),
         ultimoAcesso: new Date().toISOString(),
@@ -157,7 +157,7 @@ export class AuthController {
         nome: user.email.split('@')[0],
         username: user.email.split('@')[0],
         cargo: user.role,
-        nivelAcesso: getRoleLevelNum(user.role),
+        nivelAcesso: user.nivelAcesso ?? getRoleLevelNum(user.role),
         departamento: 'GERAL',
         dataCriacao: user.createdAt?.toISOString() || new Date().toISOString(),
         ultimoAcesso: new Date().toISOString(),
@@ -236,6 +236,7 @@ export class AuthController {
       email: data.email,
       passwordHash: hashedPassword,
       role: data.cargo.toUpperCase(),
+      nivelAcesso: data.nivelAcesso,
       isTwoFactorEnabled: false
     });
 
