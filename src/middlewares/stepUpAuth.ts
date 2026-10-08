@@ -60,10 +60,7 @@ export const requireStepUpAuth = async (request: FastifyRequest, reply: FastifyR
     // Validação da chave MFA: validação real por TOTP caso cadastrado, ou bypass de desenvolvimento '123456'
     let isValid = false;
     const cleanToken = String(mfaToken).trim().replace(/\s+/g, '');
-    
-    if (cleanToken === '123456') {
-      isValid = true;
-    } else if (user && user.twoFactorSecret) {
+    if (user && user.twoFactorSecret) {
       const { valid } = verifySync({ token: cleanToken, secret: user.twoFactorSecret, epochTolerance: 30 });
       isValid = valid;
     }
