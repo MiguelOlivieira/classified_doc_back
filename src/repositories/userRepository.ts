@@ -2,6 +2,7 @@ import { db } from '../config/db';
 import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { redisClient } from '../config/redis';
+import { encrypt, decrypt } from '../utils/encryption';
 
 /**
  * Repository Pattern: Isolamento das Queries de Usuário
@@ -36,7 +37,12 @@ export class UserRepository {
       return null;
     }
     
-    return this.enrichWithRedis(results[0]);
+    let user = results[0];
+    if (user.twoFactorSecret) {
+      user.twoFactorSecret = decrypt(user.twoFactorSecret);
+    }
+    
+    return this.enrichWithRedis(user);
   }
 
   async findById(id: string) {
@@ -46,22 +52,42 @@ export class UserRepository {
       return null;
     }
     
-    return this.enrichWithRedis(results[0]);
+    let user = results[0];
+    if (user.twoFactorSecret) {
+      user.twoFactorSecret = decrypt(user.twoFactorSecret);
+    }
+    
+    return this.enrichWithRedis(user);
   }
 
   async create(data: any) {
-    const result = await db.insert(users).values(data).returning();
-    return result[0];
+    const insertData = { ...data };
+    if (insertData.twoFactorSecret) {
+      insertData.twoFactorSecret = encrypt(insertData.twoFactorSecret);
+    }
+    const result = await db.insert(users).values(insertData).returning();
+    const user = result[0];
+    if (user && user.twoFactorSecret) {
+      user.twoFactorSecret = decrypt(user.twoFactorSecret);
+    }
+    return user;
   }
 
   async update(id: string, data: Partial<any>) {
+    const updateData = { ...data };
+    if (updateData.twoFactorSecret) {
+      updateData.twoFactorSecret = encrypt(updateData.twoFactorSecret);
+    }
     const result = await db.update(users)
-      .set(data)
+      .set(updateData)
       .where(eq(users.id, id))
       .returning();
       
     if (result.length > 0) {
       const user = result[0];
+      if (user.twoFactorSecret) {
+        user.twoFactorSecret = decrypt(user.twoFactorSecret);
+      }
       try {
         await redisClient.setex(
           `user-2fa:${id}`,
