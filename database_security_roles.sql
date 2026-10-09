@@ -8,20 +8,20 @@
 
 -- 1. Revogar o acesso total e permissões desnecessárias do schema public
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON DATABASE classified_db FROM PUBLIC;
+REVOKE ALL ON DATABASE postgres FROM PUBLIC;
 
 -- 2. Criar um usuário restrito apenas para o uso da aplicação
 -- Em produção, substitua a senha por uma senha forte do cofre de credenciais.
 CREATE ROLE app_user WITH LOGIN PASSWORD 'SenhaForteApp123';
 
 -- 3. Conceder permissão de conexão ao banco de dados específico
-GRANT CONNECT ON DATABASE classified_db TO app_user;
+GRANT CONNECT ON DATABASE postgres TO app_user;
 
 -- 4. Conceder permissão de uso do Schema
 GRANT USAGE ON SCHEMA public TO app_user;
 
 -- 5. Conceder APENAS permissões de DML (Manipulação de Dados)
--- O 'app_user' não poderá fazer DROP, ALTER, ou CREATE de tabelas.
+-- O 'app_user' não poderá fazer DROP, ALTER, ou CREATE de tabelas
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
 
 -- 6. Garantir que futuras tabelas criadas pelo administrador (via migrações) 
