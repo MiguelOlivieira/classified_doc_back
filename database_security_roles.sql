@@ -8,7 +8,6 @@
 
 -- 1. Revogar o acesso total e permissões desnecessárias do schema public
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON DATABASE postgres FROM PUBLIC;
 
 -- 2. Criar um usuário restrito apenas para o uso da aplicação
 -- Em produção, substitua a senha por uma senha forte do cofre de credenciais.
