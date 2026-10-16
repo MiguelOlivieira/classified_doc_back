@@ -11,6 +11,24 @@ const getEncryptionKey = (): Buffer => {
   return crypto.scryptSync(keyStr, 'salt', 32); // ensure exactly 32 bytes
 };
 
+export const isEncrypted = (text: string): boolean => {
+  if (!text || typeof text !== 'string') return false;
+  return /^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+$/i.test(text);
+};
+
+/**
+ * Determina se o documento deve ser criptografado em repouso no banco de dados.
+ * Regra do Sistema: Criptografar apenas documentos CONFIDENCIAIS e acima (Confidencial, Secreto, Ultrassecreto).
+ * Documentos Públicos e Internos são salvos em texto puro.
+ */
+export const shouldEncryptDocument = (nivelAcesso: string | number): boolean => {
+  const normalized = String(nivelAcesso).toUpperCase().trim();
+  if (normalized === '1' || normalized === 'PUBLICO' || normalized === '2' || normalized === 'INTERNO') {
+    return false;
+  }
+  return true;
+};
+
 export const encrypt = (text: string): string => {
   const iv = crypto.randomBytes(16);
   const key = getEncryptionKey();
@@ -26,13 +44,13 @@ export const encrypt = (text: string): string => {
 };
 
 export const decrypt = (text: string): string => {
+  if (!text || !isEncrypted(text)) {
+    // Não criptografado (ex: documentos Públicos ou Internos em texto puro)
+    return text;
+  }
+
   try {
     const parts = text.split(':');
-    if (parts.length !== 3) {
-      // Not encrypted or old format
-      return text;
-    }
-    
     const [ivHex, authTagHex, encryptedHex] = parts;
     const iv = Buffer.from(ivHex, 'hex');
     const authTag = Buffer.from(authTagHex, 'hex');

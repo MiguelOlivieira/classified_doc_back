@@ -1,7 +1,7 @@
 import { db } from '../config/db';
 import { documents } from '../db/schema';
 import { eq } from 'drizzle-orm';
-import { encrypt, decrypt } from '../utils/encryption';
+import { encrypt, decrypt, shouldEncryptDocument } from '../utils/encryption';
 
 /**
  * Repository Pattern: Isolamento das Queries do PostgreSQL
@@ -24,12 +24,13 @@ export class DocumentRepository {
   }
 
   async createDocument(doc: { id: string, titulo: string, conteudo: string, nivelAcesso: string, departamento?: string, criadoPor?: string }) {
-    console.log(`[DB] Criando documento ${doc.id}`);
-    const encryptedConteudo = encrypt(doc.conteudo);
+    console.log(`[DB] Criando documento ${doc.id} (Nível: ${doc.nivelAcesso})`);
+    const shouldEncrypt = shouldEncryptDocument(doc.nivelAcesso);
+    const storedConteudo = shouldEncrypt ? encrypt(doc.conteudo) : doc.conteudo;
     const results = await db.insert(documents).values({
       id: doc.id,
       titulo: doc.titulo,
-      conteudo: encryptedConteudo,
+      conteudo: storedConteudo,
       nivelAcesso: doc.nivelAcesso,
       departamento: doc.departamento,
       criadoPor: doc.criadoPor || 'SISTEMA'

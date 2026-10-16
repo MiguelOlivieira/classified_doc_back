@@ -1,60 +1,81 @@
-import { db } from './src/config/db.ts';
-import { documents } from './src/db/schema.ts';
-import { encrypt } from './src/utils/encryption.ts';
-import { eq } from 'drizzle-orm';
-import crypto from 'crypto';
+import postgres from 'postgres';
+import dotenv from 'dotenv';
+import path from 'path';
+import { encrypt, shouldEncryptDocument } from './src/utils/encryption';
+import { MODERN_DOCUMENTS } from './src/db/initialDocuments';
 
-// Remove APP_DATABASE_URL so db.ts falls back to DATABASE_URL for admin seeding
-process.env.APP_DATABASE_URL = '';
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+
+export async function seedDatabase(targetConnectionString: string, label: string) {
+  console.log(`\n======================================================`);
+  console.log(`Limpando e populando tabela documents em: [${label}]...`);
+  console.log(`======================================================`);
+  
+  const sql = postgres(targetConnectionString, { prepare: false });
+
+  try {
+    // 1. Limpar tabela documents
+    const deleted = await sql`DELETE FROM documents RETURNING id;`;
+    console.log(`🗑️ Registros antigos removidos da tabela documents: ${deleted.length}`);
+
+    // 2. Inserir os novos documentos com a regra de criptografia seletiva
+    for (const doc of MODERN_DOCUMENTS) {
+      const isEncrypted = shouldEncryptDocument(doc.nivelAcesso);
+      const conteudoToStore = isEncrypted ? encrypt(doc.conteudo) : doc.conteudo;
+
+      await sql`
+        INSERT INTO documents (
+          id,
+          titulo,
+          conteudo,
+          nivel_acesso,
+          departamento,
+          criado_por,
+          created_at
+        ) VALUES (
+          ${doc.id},
+          ${doc.titulo},
+          ${conteudoToStore},
+          ${doc.nivelAcesso},
+          ${doc.departamento},
+          ${doc.criadoPor},
+          NOW()
+        );
+      `;
+
+      const statusCripto = isEncrypted ? '🔒 Criptografado (AES-256-GCM)' : '📄 Texto Puro (Público/Interno)';
+      console.log(`  + [${doc.nivelAcesso}] ${doc.id} - ${doc.titulo} -> ${statusCripto}`);
+    }
+
+    console.log(`✅ [${label}] Sucesso! ${MODERN_DOCUMENTS.length} documentos novos inseridos.`);
+  } catch (err) {
+    console.error(`❌ Erro ao popular [${label}]:`, err);
+    throw err;
+  } finally {
+    await sql.end();
+  }
+}
 
 async function run() {
-  const docsToInsert = [
-    {
-      id: `DOC-ULTRA-${crypto.randomUUID().substring(0, 8)}`,
-      titulo: 'Folha de Pagamento - Comando (Sigiloso)',
-      nivelAcesso: '5',
-      departamento: 'FINANCEIRO',
-      conteudo: 'FOLHA DE PAGAMENTO DOS DIRETORES:\n\nNome: João Silva\nCPF: 123.456.789-00\nCartão Corporativo: 1111 2222 3333 4444\nBônus: R$ 50.000,00\n\nNome: Maria Santos\nCPF: 987.654.321-99\nCartão Corporativo: 5555 6666 7777 8888\nBônus: R$ 55.000,00'
-    },
-    {
-      id: `DOC-SECRET-${crypto.randomUUID().substring(0, 8)}`,
-      titulo: 'Lista de Fornecedores Confidenciais',
-      nivelAcesso: '4',
-      departamento: 'OPERAÇÕES',
-      conteudo: 'FORNECEDOR A (Equipamentos de Segurança):\nResponsável: Carlos Ferreira\nCPF: 111.222.333-44\nDados de Pagamento: Visa 4321 8765 1111 2222\n\nFORNECEDOR B (Infraestrutura):\nResponsável: Ana Costa\nCPF: 555.444.333-22\nDados de Pagamento: Master 5432 1111 2222 3333'
-    },
-    {
-      id: `DOC-CONF-${crypto.randomUUID().substring(0, 8)}`,
-      titulo: 'Relatório de Incidentes de Segurança - Trimestre 3',
-      nivelAcesso: '3',
-      departamento: 'SEGURANÇA',
-      conteudo: 'Ocorreu um vazamento suspeito de dados na estação 04.\nUsuário afetado: Pedro Almeida (CPF: 333.222.111-00).\nUm cartão de acesso corporativo foi comprometido (Num: 4000 1234 5678 9010).\nAs credenciais foram revogadas e uma nova senha foi emitida.'
-    },
-    {
-      id: `DOC-REST-${crypto.randomUUID().substring(0, 8)}`,
-      titulo: 'Manual de Procedimentos Internos v2.0',
-      nivelAcesso: '2',
-      departamento: 'GERAL',
-      conteudo: 'Este manual contém as diretrizes de conduta interna.\nTodo colaborador deve apresentar seu CPF na portaria. Exemplo de crachá temporário vinculado ao CPF 000.000.000-00.\nEm caso de viagens, utilizar o cartão corporativo fornecido (Final 1234).'
-    }
-  ];
-
-  console.log('Inserindo documentos com dados sensíveis...');
-
-  for (const doc of docsToInsert) {
-    const encryptedContent = encrypt(doc.conteudo);
-    await db.insert(documents).values({
-      id: doc.id,
-      titulo: doc.titulo,
-      conteudo: encryptedContent,
-      nivelAcesso: doc.nivelAcesso,
-      departamento: doc.departamento
-    });
-    console.log(`- Inserido: ${doc.titulo}`);
+  // 1. Executa no banco Supabase (DATABASE_URL)
+  if (process.env.DATABASE_URL) {
+    await seedDatabase(process.env.DATABASE_URL, 'Supabase Cloud');
   }
 
-  console.log('\nSeed finalizado com sucesso!');
+  // 2. Executa também no banco local (se disponível)
+  try {
+    await seedDatabase('postgresql://postgres@localhost:5432/postgres', 'Localhost Postgres');
+  } catch (err: any) {
+    console.log('PostgreSQL local não acessível ou ignorado:', err.message);
+  }
+
+  console.log('\n🎉 Processo de reestruturação dos documentos concluído com sucesso!');
   process.exit(0);
 }
 
-run().catch(console.error);
+if (process.argv[1] && process.argv[1].endsWith('seed_documents.ts')) {
+  run().catch(err => {
+    console.error('Falha geral no seed:', err);
+    process.exit(1);
+  });
+}

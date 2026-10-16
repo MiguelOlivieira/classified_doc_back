@@ -13,27 +13,34 @@ async function verify() {
   let success = true;
 
   try {
-    // 1. Data at Rest (Criptografia)
-    console.log('\n[TESTE 1] Verificação de Criptografia Data At Rest:');
-    const docQuery = await db.select().from(documents).limit(1);
-    if (docQuery.length > 0) {
-      const rawContent = docQuery[0].conteudo;
-      // Should be in format iv:authTag:encrypted
+    // 1. Data at Rest (Criptografia Seletiva)
+    console.log('\n[TESTE 1] Verificação de Criptografia Data At Rest (Política Seletiva):');
+    const confidentialDocs = await db.select().from(documents).where(eq(documents.id, 'DOC-CONF-001'));
+    if (confidentialDocs.length > 0) {
+      const rawContent = confidentialDocs[0].conteudo;
       if (rawContent.split(':').length === 3) {
-        console.log('✅ O conteúdo no banco está criptografado.');
+        console.log('✅ Documento Confidencial está criptografado no banco (AES-256-GCM).');
         const decrypted = decrypt(rawContent);
         if (decrypted !== rawContent) {
-           console.log('✅ Decriptação funciona corretamente (fluxo autorizado).');
+           console.log('✅ Decriptação de documento confidencial funciona perfeitamente.');
         } else {
            console.log('❌ Decriptação falhou.');
            success = false;
         }
       } else {
-        console.log('❌ O conteúdo no banco NÃO está criptografado (pode ser mock antigo).');
+        console.log('❌ Documento Confidencial deveria estar criptografado.');
         success = false;
       }
-    } else {
-      console.log('⚠️ Nenhum documento no banco para testar criptografia.');
+    }
+
+    const publicDocs = await db.select().from(documents).where(eq(documents.id, 'DOC-PUB-001'));
+    if (publicDocs.length > 0) {
+      const pubContent = publicDocs[0].conteudo;
+      if (pubContent.split(':').length !== 3) {
+        console.log('✅ Documento Público mantido em texto puro no banco (política seletiva correta).');
+      } else {
+        console.log('⚠️ Documento Público não deveria estar criptografado.');
+      }
     }
 
     // 2. Password Hashing
