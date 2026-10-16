@@ -40,7 +40,8 @@ export class DocumentController {
         titulo: docData.titulo,
         conteudo: docData.conteudo,
         nivelAcesso: docData.nivelAcesso.toString(),
-        departamento: docData.departamento
+        departamento: docData.departamento,
+        criadoPor: userId || docData.autor || 'SISTEMA'
       });
 
       request.log.info({ event: 'DOCUMENTO_CRIADO', docId: created.id, userId });
@@ -48,6 +49,86 @@ export class DocumentController {
     } catch (err: any) {
       request.log.error({ event: 'ERRO_CRIAR_DOCUMENTO', error: err.message });
       return reply.code(500).send({ error: 'Falha ao salvar no banco.' });
+    }
+  }
+
+  // Exclusão de documento com controle de permissão:
+  // Apenas o usuário que criou o documento pode excluí-lo, exceto Gestor/Admin.
+  async deleteDocument(request: FastifyRequest, reply: FastifyReply) {
+    const { id } = request.params as { id: string };
+    const userId = (request as any).user?.id || (request.headers['x-user-id'] as string) || '';
+    const userRole = (request as any).user?.role || (request.headers['x-user-role'] as string) || '';
+    const userName = (request as any).user?.nome || (request.headers['x-user-name'] as string) || '';
+    const userUsername = (request as any).user?.username || (request.headers['x-user-username'] as string) || '';
+
+    if (!id) {
+      return reply.code(400).send({ error: 'ID do documento não informado.' });
+    }
+
+    try {
+      const doc = await documentRepository.findById(id);
+      if (!doc) {
+        return reply.code(404).send({ error: 'Documento não encontrado.' });
+      }
+
+      // Regra de Autorização:
+      // Apenas o usuário que criou o documento tem permissão para deletá-lo,
+      // com exceção do Administrador do sistema (role GESTOR ou ADMIN), que pode deletar qualquer um.
+      const normalizedRole = (userRole || '').toUpperCase();
+      const isGestorOuAdmin = normalizedRole === 'GESTOR' || normalizedRole === 'ADMIN';
+
+      const docCriador = (doc.criadoPor || '').trim().toLowerCase();
+      const reqUserId = (userId || '').trim().toLowerCase();
+      const reqUserName = (userName || '').trim().toLowerCase();
+      const reqUserUsername = (userUsername || '').trim().toLowerCase();
+
+      const isCriador = Boolean(docCriador && (
+        docCriador === reqUserId || 
+        docCriador === reqUserName ||
+        docCriador === reqUserUsername ||
+        ((doc as any).autor && (doc as any).autor.trim().toLowerCase() === reqUserName)
+      ));
+
+      if (!isGestorOuAdmin && !isCriador) {
+        request.log.warn({
+          event: 'TENTATIVA_EXCLUSAO_NEGADA',
+          docId: id,
+          userId,
+          userRole,
+          criadoPor: doc.criadoPor
+        });
+        return reply.code(403).send({
+          error: 'Acesso negado: apenas o usuário criador ou um Administrador/Gestor podem excluir este documento.'
+        });
+      }
+
+      await documentRepository.deleteDocument(id);
+
+      try {
+        await logSecuredAuditEvent(userId || userName || 'anonymous', 'EXCLUSAO_DOCUMENTO', {
+          documentId: id,
+          titulo: doc.titulo,
+          criadoPor: doc.criadoPor,
+          deletedByRole: userRole,
+          isGestorOuAdmin
+        });
+      } catch (e) { }
+
+      request.log.info({
+        event: 'DOCUMENTO_EXCLUIDO',
+        docId: id,
+        deletedBy: userId || userName || 'anonymous',
+        role: userRole
+      });
+
+      return reply.code(200).send({
+        status: 'Success',
+        message: 'Documento excluído com sucesso.',
+        id
+      });
+    } catch (err: any) {
+      request.log.error({ event: 'ERRO_EXCLUIR_DOCUMENTO', error: err.message });
+      return reply.code(500).send({ error: 'Falha ao excluir documento no banco de dados.' });
     }
   }
 

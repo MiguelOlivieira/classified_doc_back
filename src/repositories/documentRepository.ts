@@ -1,6 +1,7 @@
 import { db } from '../config/db';
 import { documents } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { encrypt, decrypt } from '../utils/encryption';
 
 /**
  * Repository Pattern: Isolamento das Queries do PostgreSQL
@@ -8,8 +9,6 @@ import { eq } from 'drizzle-orm';
  * Nenhuma rota ou controller toca no SQL/Drizzle diretamente.
  * Tudo passa por repositórios parametrizados que já previnem injeção de SQL.
  */
-import { encrypt, decrypt } from '../utils/encryption';
-
 export class DocumentRepository {
   async findAll() {
     console.log(`[DB] Listando documentos...`);
@@ -18,12 +17,13 @@ export class DocumentRepository {
       titulo: documents.titulo,
       nivelAcesso: documents.nivelAcesso,
       departamento: documents.departamento,
+      criadoPor: documents.criadoPor,
       createdAt: documents.createdAt
     }).from(documents);
     return results;
   }
 
-  async createDocument(doc: { id: string, titulo: string, conteudo: string, nivelAcesso: string, departamento?: string }) {
+  async createDocument(doc: { id: string, titulo: string, conteudo: string, nivelAcesso: string, departamento?: string, criadoPor?: string }) {
     console.log(`[DB] Criando documento ${doc.id}`);
     const encryptedConteudo = encrypt(doc.conteudo);
     const results = await db.insert(documents).values({
@@ -31,7 +31,8 @@ export class DocumentRepository {
       titulo: doc.titulo,
       conteudo: encryptedConteudo,
       nivelAcesso: doc.nivelAcesso,
-      departamento: doc.departamento
+      departamento: doc.departamento,
+      criadoPor: doc.criadoPor || 'SISTEMA'
     }).returning();
     return results[0];
   }
@@ -60,7 +61,14 @@ export class DocumentRepository {
       
     return results.length > 0;
   }
+
+  async deleteDocument(id: string) {
+    console.log(`[DB] Excluindo documento ${id}`);
+    const results = await db.delete(documents)
+      .where(eq(documents.id, id))
+      .returning();
+    return results.length > 0;
+  }
 }
 
 export const documentRepository = new DocumentRepository();
-

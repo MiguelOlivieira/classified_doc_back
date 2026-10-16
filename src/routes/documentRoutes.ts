@@ -15,6 +15,9 @@ export async function documentRoutes(fastify: FastifyInstance) {
   // Buscar documento
   fastify.get('/:id', documentController.getDocument.bind(documentController));
 
+  // Excluir documento (apenas criador ou Gestor/Admin)
+  fastify.delete('/:id', documentController.deleteDocument.bind(documentController));
+
   // Download documento com Canary Token
   fastify.get('/:id/download', documentController.downloadDocument.bind(documentController));
   

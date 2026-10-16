@@ -11,6 +11,7 @@ export const documents = pgTable('documents', {
   conteudo: text('conteudo').notNull(),
   nivelAcesso: varchar('nivel_acesso', { length: 50 }).notNull(),
   departamento: varchar('departamento', { length: 100 }),
+  criadoPor: varchar('criado_por', { length: 100 }).default('SISTEMA'),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
   check('chk_documents_id', sql`length(trim(${table.id})) > 0`),
@@ -59,6 +60,7 @@ export const vwDocumentsMasked = pgView('vw_documents_masked', {
   titulo: varchar('titulo', { length: 200 }),
   nivelAcesso: varchar('nivel_acesso', { length: 50 }),
   departamento: varchar('departamento', { length: 100 }),
+  criadoPor: varchar('criado_por', { length: 100 }),
   conteudo: text('conteudo'),
   conteudoMascarado: text('conteudo_mascarado'),
   createdAt: timestamp('created_at'),

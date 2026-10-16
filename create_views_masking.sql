@@ -105,6 +105,11 @@ EXECUTE FUNCTION trg_delete_vw_users_masked();
 -- ------------------------------------------------------------------------------
 -- 2. VIEW DE DOCUMENTOS MASCARADA (vw_documents_masked)
 -- ------------------------------------------------------------------------------
+-- Adiciona a coluna criado_por na tabela documents caso não exista
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS criado_por varchar(100) DEFAULT 'SISTEMA';
+
+DROP VIEW IF EXISTS vw_documents_masked CASCADE;
+
 -- Mascara CPFs (***.***.***-**) e Cartões de Crédito (**** **** **** XXXX)
 CREATE OR REPLACE VIEW vw_documents_masked AS
 SELECT 
@@ -112,6 +117,7 @@ SELECT
   titulo,
   nivel_acesso,
   departamento,
+  criado_por,
   regexp_replace(
     regexp_replace(
       conteudo,
@@ -147,6 +153,7 @@ BEGIN
     conteudo,
     nivel_acesso,
     departamento,
+    criado_por,
     created_at
   ) VALUES (
     COALESCE(NEW.id, 'DOC-' || substr(md5(random()::text), 1, 8)),
@@ -154,13 +161,15 @@ BEGIN
     COALESCE(NEW.conteudo, NEW.conteudo_mascarado, ''),
     NEW.nivel_acesso,
     NEW.departamento,
+    COALESCE(NEW.criado_por, 'SISTEMA'),
     COALESCE(NEW.created_at, NOW())
   )
   ON CONFLICT (id) DO UPDATE SET
     titulo = EXCLUDED.titulo,
     conteudo = EXCLUDED.conteudo,
     nivel_acesso = EXCLUDED.nivel_acesso,
-    departamento = EXCLUDED.departamento;
+    departamento = EXCLUDED.departamento,
+    criado_por = EXCLUDED.criado_por;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
