@@ -35,7 +35,7 @@ A integridade dos atos da administração baseia-se na publicidade por padrão e
     titulo: 'Relatório Anual de Sustentabilidade e Eficiência Energética',
     nivelAcesso: 'PUBLICO',
     departamento: 'Operações',
-    criadoPor: 'admin@sentinela.gov',
+    criadoPor: 'gestor@sentinela.gov',
     conteudo: `RELATÓRIO PÚBLICO ANUAL DE IMPACTO AMBIENTAL E EFICIÊNCIA ENERGÉTICA 2026
 
 A Sentinela Corp concluiu a modernização dos data centers em Brasília e São Paulo:
@@ -53,7 +53,7 @@ Documento emitido pela Coordenação de Meio Ambiente e Logística Sustentável.
     titulo: 'Manual de Procedimentos Internos e Resposta a Incidentes',
     nivelAcesso: 'INTERNO',
     departamento: 'Tecnologia',
-    criadoPor: 'admin@sentinela.gov',
+    criadoPor: 'marcos.ti@sentinela.gov',
     conteudo: `DIRETRIZ INTERNA DE SEGURANÇA DA INFORMAÇÃO - TECNOLOGIA E INFRAESTRUTURA
 
 1. CONTROLE DE ACESSO FÍSICO E LÓGICO:
@@ -71,7 +71,7 @@ O cadastro de acesso temporário foi emitido para o auditor externo sob supervis
     titulo: 'Guia de Configuração de VPN Corporativa e Acesso Remoto',
     nivelAcesso: 'INTERNO',
     departamento: 'Tecnologia',
-    criadoPor: 'admin@sentinela.gov',
+    criadoPor: 'suporte.redes@sentinela.gov',
     conteudo: `MANUAL DO COLABORADOR: ACESSO SEGURO VIA VPN CORPORATIVA (IPSEC / WIREGUARD)
 
 Para colaboradores em trabalho remoto ou viagens institucionais:
@@ -89,7 +89,7 @@ Em caso de perda de dispositivo corporativo, contate imediatamente o plantão do
     titulo: 'Relatório Financeiro Q3: Alocação Orçamentária e Auditoria',
     nivelAcesso: 'CONFIDENCIAL',
     departamento: 'Financeiro',
-    criadoPor: 'admin@sentinela.gov',
+    criadoPor: 'roberto.financas@sentinela.gov',
     conteudo: `DEMONSTRATIVO FINANCEIRO CONFIDENCIAL - AUDITORIA INTERNA DO 3º TRIMESTRE
 
 DESPESAS OPERACIONAIS E REMUNERAÇÃO DE ADJUNTOS:
@@ -106,7 +106,7 @@ Acesso restrito a cargos de Analista Financeiro, Gestor e Diretoria Executiva.`
     titulo: 'Quadro Geral de Credenciais de Segurança e Cargos de Confiança',
     nivelAcesso: 'CONFIDENCIAL',
     departamento: 'Recursos Humanos',
-    criadoPor: 'admin@sentinela.gov',
+    criadoPor: 'fernanda.rh@sentinela.gov',
     conteudo: `RELAÇÃO NOMINAL DE PESSOAL COM ACESSO PRIVILEGIADO A ATIVOS CRÍTICOS
 
 1. Carlos Eduardo Santana (Nível 4 - Secreto) - Chefe de Operações Táticas
@@ -125,7 +125,7 @@ Este documento é classificado como CONFIDENCIAL e sua divulgação não autoriz
     titulo: 'Relatório de Inteligência: Avaliação de Riscos Geopolíticos',
     nivelAcesso: 'SECRETO',
     departamento: 'Inteligência',
-    criadoPor: 'admin@sentinela.gov',
+    criadoPor: 'carlos.operacoes@sentinela.gov',
     conteudo: `SUMÁRIO DE INTELIGÊNCIA ESTRATÉGICA - CLASSIFICAÇÃO: SECRETO
 OPERAÇÃO SENTINELA DO SUL - ANÁLISE DE VULNERABILIDADES FRONTEIRIÇAS
 
@@ -142,7 +142,7 @@ CONTRAMEDIDAS ACIONADAS:
     titulo: 'Auditoria de Vulnerabilidades em Redes Neurais e Modelos de IA',
     nivelAcesso: 'SECRETO',
     departamento: 'Inteligência',
-    criadoPor: 'admin@sentinela.gov',
+    criadoPor: 'ana.analista@sentinela.gov',
     conteudo: `AUDITORIA DE SEGURANÇA ADVERSARIAL EM MODELOS DE LINGUAGEM E CLASSIFICAÇÃO
 
 Resultados dos testes de Red Team executados contra o motor de inferência da plataforma Sentinela:
@@ -158,7 +158,7 @@ Resultados dos testes de Red Team executados contra o motor de inferência da pl
     titulo: 'Operação Eclipse: Neutralização de Ameaça Cibernética Avançada',
     nivelAcesso: 'ULTRASSECRETO',
     departamento: 'Inteligência',
-    criadoPor: 'admin@sentinela.gov',
+    criadoPor: 'cyber.comando@sentinela.gov',
     conteudo: `CLASSIFICAÇÃO MÁXIMA NACIONAL: ULTRASSECRETO // GRAU 5
 RELATÓRIO CONCLUSIVO DA FORÇA-TAREFA ECLIPSE
 

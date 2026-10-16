@@ -143,7 +143,10 @@ SELECT
   END AS conteudo,
   nivel_acesso,
   departamento,
-  criado_por,
+  CASE 
+    WHEN criado_por LIKE '%@%' THEN CONCAT(LEFT(criado_por, 3), '***@', SPLIT_PART(criado_por, '@', 2))
+    ELSE criado_por
+  END AS criado_por,
   created_at
 FROM documents;
 
