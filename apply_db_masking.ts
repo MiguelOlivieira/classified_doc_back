@@ -12,12 +12,12 @@ async function applyDatabaseMasking() {
 
   try {
     // 1. Criar View para a Tabela de Usuários (Mascarando E-mail e Ocultando Secrets)
+    await sql`DROP VIEW IF EXISTS vw_users_masked CASCADE;`;
     await sql`
       CREATE OR REPLACE VIEW vw_users_masked AS
       SELECT 
         id,
         CONCAT(LEFT(email, 3), '***@', SPLIT_PART(email, '@', 2)) AS email,
-        CONCAT(LEFT(email, 3), '***@', SPLIT_PART(email, '@', 2)) AS email_mascarado,
         '********'::varchar(255) AS password_hash,
         role,
         nivel_acesso,
@@ -26,9 +26,9 @@ async function applyDatabaseMasking() {
         created_at
       FROM users;
     `;
-    console.log('✅ View vw_users_masked criada com sucesso.');
+    console.log('✅ View vw_users_masked criada com sucesso (coluna redundante email_mascarado removida).');
 
-    // 1.1 Trigger INSTEAD OF INSERT para vw_users_masked (com ON CONFLICT inteligente)
+    // 1.1 Trigger INSTEAD OF INSERT para vw_users_masked
     await sql`
       CREATE OR REPLACE FUNCTION trg_insert_vw_users_masked()
       RETURNS TRIGGER AS $$
@@ -44,7 +44,7 @@ async function applyDatabaseMasking() {
           created_at
         ) VALUES (
           COALESCE(NEW.id, 'usr-' || substr(md5(random()::text), 1, 8)),
-          COALESCE(NEW.email, NEW.email_mascarado),
+          NEW.email,
           COALESCE(NEW.password_hash, '********'),
           NEW.role,
           COALESCE(NEW.nivel_acesso, 1),
@@ -76,7 +76,7 @@ async function applyDatabaseMasking() {
       BEGIN
         UPDATE users
         SET
-          email = COALESCE(NEW.email, NEW.email_mascarado, users.email),
+          email = COALESCE(NEW.email, users.email),
           role = COALESCE(NEW.role, users.role),
           nivel_acesso = COALESCE(NEW.nivel_acesso, users.nivel_acesso),
           is_two_factor_enabled = COALESCE(NEW.is_two_factor_enabled, users.is_two_factor_enabled)
@@ -111,7 +111,7 @@ async function applyDatabaseMasking() {
     `;
     console.log('✅ Triggers INSTEAD OF (INSERT/UPDATE/DELETE) configurados para vw_users_masked.');
 
-    // 2. Criar View para a Tabela de Documentos (Mascarando CPF e Cartões via RegEx)
+    // 2. Criar View para a Tabela de Documentos (Mascarando Ciphertext AES e PII via RegEx)
     await sql`ALTER TABLE documents ADD COLUMN IF NOT EXISTS criado_por varchar(100) DEFAULT 'SISTEMA';`;
     await sql`DROP VIEW IF EXISTS vw_documents_masked CASCADE;`;
     await sql`
@@ -119,37 +119,35 @@ async function applyDatabaseMasking() {
       SELECT 
         id,
         titulo,
+        CASE 
+          WHEN conteudo ~* '^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+$' THEN
+            CASE 
+              WHEN nivel_acesso IN ('ULTRASSECRETO', '5') THEN '*** [CONTEÚDO CLASSIFICADO - ULTRASSECRETO - PROTEGIDO POR AES-256] ***'
+              WHEN nivel_acesso IN ('SECRETO', '4') THEN '*** [CONTEÚDO CLASSIFICADO - SECRETO - PROTEGIDO POR AES-256] ***'
+              ELSE '[CONTEÚDO CRIPTOGRAFADO EM REPOUSO - AES-256-GCM]'
+            END
+          ELSE
+            regexp_replace(
+              regexp_replace(
+                conteudo,
+                '(\\d{4}[ -]?\\d{4}[ -]?\\d{4}[ -]?)(\\d{4})',
+                '**** **** **** \\2',
+                'g'
+              ),
+              '\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}',
+              '***.***.***-**',
+              'g'
+            )
+        END AS conteudo,
         nivel_acesso,
         departamento,
         criado_por,
-        regexp_replace(
-          regexp_replace(
-            conteudo,
-            '(\\d{4}[ -]?\\d{4}[ -]?\\d{4}[ -]?)(\\d{4})',
-            '**** **** **** \\2',
-            'g'
-          ),
-          '\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}',
-          '***.***.***-**',
-          'g'
-        ) AS conteudo,
-        regexp_replace(
-          regexp_replace(
-            conteudo,
-            '(\\d{4}[ -]?\\d{4}[ -]?\\d{4}[ -]?)(\\d{4})',
-            '**** **** **** \\2',
-            'g'
-          ),
-          '\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}',
-          '***.***.***-**',
-          'g'
-        ) AS conteudo_mascarado,
         created_at
       FROM documents;
     `;
-    console.log('✅ View vw_documents_masked criada com sucesso.');
+    console.log('✅ View vw_documents_masked criada com sucesso (coluna redundante conteudo_mascarado removida e mascaramento contextual ativo).');
 
-    // 2.1 Trigger INSTEAD OF INSERT para vw_documents_masked (com ON CONFLICT inteligente)
+    // 2.1 Trigger INSTEAD OF INSERT para vw_documents_masked
     await sql`
       CREATE OR REPLACE FUNCTION trg_insert_vw_documents_masked()
       RETURNS TRIGGER AS $$
@@ -165,7 +163,7 @@ async function applyDatabaseMasking() {
         ) VALUES (
           COALESCE(NEW.id, 'DOC-' || substr(md5(random()::text), 1, 8)),
           NEW.titulo,
-          COALESCE(NEW.conteudo, NEW.conteudo_mascarado, ''),
+          COALESCE(NEW.conteudo, ''),
           NEW.nivel_acesso,
           NEW.departamento,
           COALESCE(NEW.criado_por, 'SISTEMA'),
@@ -197,11 +195,7 @@ async function applyDatabaseMasking() {
         UPDATE documents
         SET 
           titulo = COALESCE(NEW.titulo, documents.titulo),
-          conteudo = CASE 
-            WHEN NEW.conteudo IS NOT NULL THEN NEW.conteudo
-            WHEN NEW.conteudo_mascarado IS NOT NULL THEN NEW.conteudo_mascarado
-            ELSE documents.conteudo
-          END,
+          conteudo = COALESCE(NEW.conteudo, documents.conteudo),
           nivel_acesso = COALESCE(NEW.nivel_acesso, documents.nivel_acesso),
           departamento = COALESCE(NEW.departamento, documents.departamento)
         WHERE id = OLD.id;

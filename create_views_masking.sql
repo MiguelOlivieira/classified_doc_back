@@ -14,11 +14,13 @@
 -- ------------------------------------------------------------------------------
 -- 1. VIEW DE USUÁRIOS MASCARADA (vw_users_masked)
 -- ------------------------------------------------------------------------------
+-- Drop da view para atualizar o conjunto de colunas (removendo coluna duplicada email_mascarado)
+DROP VIEW IF EXISTS vw_users_masked CASCADE;
+
 CREATE OR REPLACE VIEW vw_users_masked AS
 SELECT 
   id,
   CONCAT(LEFT(email, 3), '***@', SPLIT_PART(email, '@', 2)) AS email,
-  CONCAT(LEFT(email, 3), '***@', SPLIT_PART(email, '@', 2)) AS email_mascarado,
   '********'::varchar(255) AS password_hash, -- Nunca expor o hash real na view
   role,
   nivel_acesso,
@@ -42,7 +44,7 @@ BEGIN
     created_at
   ) VALUES (
     COALESCE(NEW.id, 'usr-' || substr(md5(random()::text), 1, 8)),
-    COALESCE(NEW.email, NEW.email_mascarado),
+    NEW.email,
     COALESCE(NEW.password_hash, '********'),
     NEW.role,
     COALESCE(NEW.nivel_acesso, 1),
@@ -71,7 +73,7 @@ RETURNS TRIGGER AS $$
 BEGIN
   UPDATE users
   SET
-    email = COALESCE(NEW.email, NEW.email_mascarado, users.email),
+    email = COALESCE(NEW.email, users.email),
     role = COALESCE(NEW.role, users.role),
     nivel_acesso = COALESCE(NEW.nivel_acesso, users.nivel_acesso),
     is_two_factor_enabled = COALESCE(NEW.is_two_factor_enabled, users.is_two_factor_enabled)
@@ -108,38 +110,40 @@ EXECUTE FUNCTION trg_delete_vw_users_masked();
 -- Adiciona a coluna criado_por na tabela documents caso não exista
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS criado_por varchar(100) DEFAULT 'SISTEMA';
 
+-- Drop da view para atualizar o conjunto de colunas (removendo coluna duplicada conteudo_mascarado)
 DROP VIEW IF EXISTS vw_documents_masked CASCADE;
 
--- Mascara CPFs (***.***.***-**) e Cartões de Crédito (**** **** **** XXXX)
+-- Mascara conteúdo criptografado (AES-256) com aviso de classificação
+-- e mascara dados sensíveis em texto direto (CPF e Cartão de Crédito)
 CREATE OR REPLACE VIEW vw_documents_masked AS
 SELECT 
   id,
   titulo,
+  CASE 
+    -- Se o dado estiver criptografado em repouso com AES-256-GCM (formato iv:tag:hex gravado pela aplicação)
+    WHEN conteudo ~* '^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+$' THEN
+      CASE 
+        WHEN nivel_acesso IN ('ULTRASSECRETO', '5') THEN '*** [CONTEÚDO CLASSIFICADO - ULTRASSECRETO - PROTEGIDO POR AES-256] ***'
+        WHEN nivel_acesso IN ('SECRETO', '4') THEN '*** [CONTEÚDO CLASSIFICADO - SECRETO - PROTEGIDO POR AES-256] ***'
+        ELSE '[CONTEÚDO CRIPTOGRAFADO EM REPOUSO - AES-256-GCM]'
+      END
+    -- Se o dado for texto direto (ex: inserido no banco via SQL com CPFs/Cartões)
+    ELSE
+      regexp_replace(
+        regexp_replace(
+          conteudo,
+          '(\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?)(\d{4})',
+          '**** **** **** \2',
+          'g'
+        ),
+        '\d{3}\.\d{3}\.\d{3}-\d{2}',
+        '***.***.***-**',
+        'g'
+      )
+  END AS conteudo,
   nivel_acesso,
   departamento,
   criado_por,
-  regexp_replace(
-    regexp_replace(
-      conteudo,
-      '(\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?)(\d{4})',
-      '**** **** **** \2',
-      'g'
-    ),
-    '\d{3}\.\d{3}\.\d{3}-\d{2}',
-    '***.***.***-**',
-    'g'
-  ) AS conteudo,
-  regexp_replace(
-    regexp_replace(
-      conteudo,
-      '(\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?)(\d{4})',
-      '**** **** **** \2',
-      'g'
-    ),
-    '\d{3}\.\d{3}\.\d{3}-\d{2}',
-    '***.***.***-**',
-    'g'
-  ) AS conteudo_mascarado,
   created_at
 FROM documents;
 
@@ -158,7 +162,7 @@ BEGIN
   ) VALUES (
     COALESCE(NEW.id, 'DOC-' || substr(md5(random()::text), 1, 8)),
     NEW.titulo,
-    COALESCE(NEW.conteudo, NEW.conteudo_mascarado, ''),
+    COALESCE(NEW.conteudo, ''),
     NEW.nivel_acesso,
     NEW.departamento,
     COALESCE(NEW.criado_por, 'SISTEMA'),
@@ -187,11 +191,7 @@ BEGIN
   UPDATE documents
   SET 
     titulo = COALESCE(NEW.titulo, documents.titulo),
-    conteudo = CASE 
-      WHEN NEW.conteudo IS NOT NULL THEN NEW.conteudo
-      WHEN NEW.conteudo_mascarado IS NOT NULL THEN NEW.conteudo_mascarado
-      ELSE documents.conteudo
-    END,
+    conteudo = COALESCE(NEW.conteudo, documents.conteudo),
     nivel_acesso = COALESCE(NEW.nivel_acesso, documents.nivel_acesso),
     departamento = COALESCE(NEW.departamento, documents.departamento)
   WHERE id = OLD.id;

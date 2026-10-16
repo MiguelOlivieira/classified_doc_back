@@ -46,7 +46,6 @@ export const users = pgTable('users', {
 export const vwUsersMasked = pgView('vw_users_masked', {
   id: varchar('id', { length: 50 }),
   email: varchar('email', { length: 255 }),
-  emailMascarado: varchar('email_mascarado', { length: 255 }),
   passwordHash: varchar('password_hash', { length: 255 }),
   role: varchar('role', { length: 50 }),
   nivelAcesso: integer('nivel_acesso'),
@@ -58,11 +57,10 @@ export const vwUsersMasked = pgView('vw_users_masked', {
 export const vwDocumentsMasked = pgView('vw_documents_masked', {
   id: varchar('id', { length: 50 }),
   titulo: varchar('titulo', { length: 200 }),
+  conteudo: text('conteudo'),
   nivelAcesso: varchar('nivel_acesso', { length: 50 }),
   departamento: varchar('departamento', { length: 100 }),
   criadoPor: varchar('criado_por', { length: 100 }),
-  conteudo: text('conteudo'),
-  conteudoMascarado: text('conteudo_mascarado'),
   createdAt: timestamp('created_at'),
 }).existing();
 
