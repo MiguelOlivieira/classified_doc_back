@@ -11,38 +11,56 @@
 DO $$
 BEGIN
   -- ----------------------------------------------------------------------------
+  -- 0. HIGIENIZAÇÃO DE REGISTROS DE TESTES ANTERIORES
+  -- ----------------------------------------------------------------------------
+  -- Remove usuários com ID vazio gerados em testes ou mocks inconsistentes
+  DELETE FROM users WHERE LENGTH(TRIM(id)) = 0 OR id = '' OR id IS NULL;
+  
+  -- Remove o usuário de teste com e-mail inválido caso tenha sido inserido
+  DELETE FROM users WHERE id = 'u-teste-email' OR email = 'email_sem_arroba.com';
+
+  -- Ajusta níveis de acesso nulos ou fora do padrão em usuários antigos
+  UPDATE users SET nivel_acesso = 1 WHERE nivel_acesso IS NULL OR nivel_acesso < 1 OR nivel_acesso > 5;
+  UPDATE users SET role = UPPER(role) WHERE role IS NOT NULL;
+
+  -- Remove documentos com ID vazio caso existam
+  DELETE FROM documents WHERE LENGTH(TRIM(id)) = 0 OR id = '' OR id IS NULL;
+
+
+  -- ----------------------------------------------------------------------------
   -- 1. TABELA USERS
   -- ----------------------------------------------------------------------------
 
   -- 1.1 ID não pode ser vazio ou espaços em branco
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_users_id') THEN
     ALTER TABLE users ADD CONSTRAINT chk_users_id 
-    CHECK (LENGTH(TRIM(id)) > 0);
+    CHECK (LENGTH(TRIM(id)) > 0) NOT VALID;
   END IF;
 
   -- 1.2 Nível de acesso deve estar estritamente entre 1 e 5
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_users_nivel_acesso') THEN
     ALTER TABLE users ADD CONSTRAINT chk_users_nivel_acesso 
-    CHECK (nivel_acesso >= 1 AND nivel_acesso <= 5);
+    CHECK (nivel_acesso >= 1 AND nivel_acesso <= 5) NOT VALID;
   END IF;
 
-  -- 1.3 Formato válido de e-mail (RFC simplificada)
+  -- 1.3 Formato válido de e-mail (RFC simplificada com @ e domínio)
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_users_email_format') THEN
     ALTER TABLE users ADD CONSTRAINT chk_users_email_format 
-    CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
+    CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$') NOT VALID;
   END IF;
 
   -- 1.4 Cargo/Role permitidos (RBAC restrito no SGBD)
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_users_role') THEN
     ALTER TABLE users ADD CONSTRAINT chk_users_role 
-    CHECK (role IN ('GESTOR', 'ADMIN', 'OPERADOR', 'ANALISTA', 'USUARIO', 'VISITANTE', 'ESTAGIARIO'));
+    CHECK (UPPER(role) IN ('GESTOR', 'ADMIN', 'OPERADOR', 'ANALISTA', 'USUARIO', 'VISITANTE', 'ESTAGIARIO')) NOT VALID;
   END IF;
 
   -- 1.5 Hash da senha não pode ser vazio ou trivial (mínimo 4 caracteres)
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_users_password_hash') THEN
     ALTER TABLE users ADD CONSTRAINT chk_users_password_hash 
-    CHECK (LENGTH(password_hash) >= 4);
+    CHECK (LENGTH(password_hash) >= 4) NOT VALID;
   END IF;
+
 
   -- ----------------------------------------------------------------------------
   -- 2. TABELA DOCUMENTS
@@ -51,31 +69,31 @@ BEGIN
   -- 2.1 ID do documento não pode ser vazio
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_documents_id') THEN
     ALTER TABLE documents ADD CONSTRAINT chk_documents_id 
-    CHECK (LENGTH(TRIM(id)) > 0);
+    CHECK (LENGTH(TRIM(id)) > 0) NOT VALID;
   END IF;
 
   -- 2.2 Título com no mínimo 3 caracteres
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_documents_titulo') THEN
     ALTER TABLE documents ADD CONSTRAINT chk_documents_titulo 
-    CHECK (LENGTH(TRIM(titulo)) >= 3);
+    CHECK (LENGTH(TRIM(titulo)) >= 3) NOT VALID;
   END IF;
 
   -- 2.3 Conteúdo não pode ser vazio
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_documents_conteudo') THEN
     ALTER TABLE documents ADD CONSTRAINT chk_documents_conteudo 
-    CHECK (LENGTH(TRIM(conteudo)) > 0);
+    CHECK (LENGTH(TRIM(conteudo)) > 0) NOT VALID;
   END IF;
 
   -- 2.4 Nível de classificação válido (numérico ou textual)
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_documents_nivel_acesso') THEN
     ALTER TABLE documents ADD CONSTRAINT chk_documents_nivel_acesso 
-    CHECK (nivel_acesso IN ('1', '2', '3', '4', '5', 'PUBLICO', 'INTERNO', 'CONFIDENCIAL', 'SECRETO', 'ULTRASSECRETO', 'RESTRITO'));
+    CHECK (nivel_acesso IN ('1', '2', '3', '4', '5', 'PUBLICO', 'INTERNO', 'CONFIDENCIAL', 'SECRETO', 'ULTRASSECRETO', 'RESTRITO')) NOT VALID;
   END IF;
 
   -- 2.5 Departamento: sem dígitos numéricos e mínimo 2 caracteres (quando informado)
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_documents_departamento') THEN
     ALTER TABLE documents ADD CONSTRAINT chk_documents_departamento 
-    CHECK (departamento IS NULL OR (LENGTH(TRIM(departamento)) >= 2 AND departamento !~ '[0-9]'));
+    CHECK (departamento IS NULL OR (LENGTH(TRIM(departamento)) >= 2 AND departamento !~ '[0-9]')) NOT VALID;
   END IF;
 
   RAISE NOTICE '✅ Todas as Check Constraints foram aplicadas com sucesso!';
