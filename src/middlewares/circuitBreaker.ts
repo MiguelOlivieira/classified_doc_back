@@ -34,7 +34,7 @@ export const getAbacEngineUnstable = () => {
 const callExternalAbacEngine = async (userId: string, documentId: string) => {
   abacRequestCount++;
 
-  if (abacRequestCount > 15 || isAbacEngineUnstable) {
+  if (isAbacEngineUnstable) {
     // Simula uma falha catastrófica no PDP para acionar o Circuit Breaker
     throw new Error('Erro de conexão com o motor ABAC (PDP Indisponível/Sobrecarga)');
   }

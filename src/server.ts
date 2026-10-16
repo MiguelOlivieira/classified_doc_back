@@ -61,6 +61,8 @@ await fastify.register(fastifyCors, {
       'Authorization', 
       'x-user-id',
       'x-user-role',
+      'x-user-name',
+      'x-user-username',
       'x-device-fingerprint', 
       'x-document-level', 
       'x-mfa-token',     
@@ -85,8 +87,9 @@ await fastify.register(fastifyCors, {
 
   // Honeypot no endpoint de auditoria para usuários não-admin
   const handleAuditoriaHoneypot = async (request: any, reply: any) => {
-    const userId = request.user?.id || request.headers['x-user-id'] || 'anonymous';
-    const isAdmin = userId === 'usr-001' || userId === 'usr-admin-001' || userId === 'admin';
+    const userId = (request.user?.id || request.headers['x-user-id'] || 'anonymous').toLowerCase();
+    const userRole = (request.user?.role || request.headers['x-user-role'] || '').toUpperCase();
+    const isAdmin = userRole === 'ADMIN' || userRole === 'GESTOR' || userId === 'usr-001' || userId === 'usr-admin-001' || userId === 'admin';
 
     if (!isAdmin) {
       const msg = `🚨 [HONEYPOT TRIGGERED] Tentativa de acesso não autorizado aos logs de auditoria (/auditoria)! Usuário: ${userId} | IP: ${request.ip}`;

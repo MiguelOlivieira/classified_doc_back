@@ -6,9 +6,9 @@ import { verifySync } from 'otplib';
 export const mfaFailures = new Map<string, { count: number; blockedUntil: number }>();
 
 export const requireStepUpAuth = async (request: FastifyRequest, reply: FastifyReply) => {
-  const documentLevel = (request as any).documentLevel;
+  const documentLevel = String((request as any).documentLevel || '').toUpperCase();
 
-  if (['CONFIDENCIAL', 'SECRETO', 'ULTRASSECRETO'].includes(documentLevel)) {
+  if (['CONFIDENCIAL', 'SECRETO', 'ULTRASSECRETO', '3', '4', '5'].includes(documentLevel)) {
     const userId = ((request as any).user?.id || request.headers['x-user-id']) as string;
     
     const userMfaStatus = mfaFailures.get(userId);

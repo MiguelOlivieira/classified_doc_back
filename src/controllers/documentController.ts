@@ -151,6 +151,16 @@ export class DocumentController {
     // Determina o nível de classificação real:
     // Se não estiver no banco, usa o cabeçalho enviado pelo front ou deduz pelo código
     let nivelAcesso = doc?.nivelAcesso || clientDocLevel;
+    const numToNameMap: Record<string, string> = {
+      '1': 'PUBLICO',
+      '2': 'INTERNO',
+      '3': 'CONFIDENCIAL',
+      '4': 'SECRETO',
+      '5': 'ULTRASSECRETO',
+    };
+    if (nivelAcesso && numToNameMap[String(nivelAcesso).toUpperCase()]) {
+      nivelAcesso = numToNameMap[String(nivelAcesso).toUpperCase()];
+    }
     if (!nivelAcesso) {
       if (id.includes('ULTRA')) nivelAcesso = 'ULTRASSECRETO';
       else if (id.includes('SECRET')) nivelAcesso = 'SECRETO';

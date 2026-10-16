@@ -210,9 +210,12 @@ export class AuthController {
   }
 
   async register(request: FastifyRequest, reply: FastifyReply) {
-    const userId = request.headers['x-user-id'] as string;
-    if (userId !== 'usr-001' && userId !== 'usr-admin-001' && userId !== 'admin') {
-      request.log.warn({ event: 'TENTATIVA_REGISTRO_NAO_AUTORIZADA', userId });
+    const userId = (request.headers['x-user-id'] as string) || '';
+    const userRole = ((request as any).user?.role || (request.headers['x-user-role'] as string) || '').toUpperCase();
+    const isAdmin = userRole === 'ADMIN' || userRole === 'GESTOR' || ['usr-001', 'usr-admin-001', 'admin'].includes(userId.toLowerCase());
+    
+    if (!isAdmin) {
+      request.log.warn({ event: 'TENTATIVA_REGISTRO_NAO_AUTORIZADA', userId, userRole });
       return reply.code(403).send({ error: 'Apenas administradores podem registrar novos operadores.' });
     }
     const data = RegisterUserSchema.parse(request.body);
