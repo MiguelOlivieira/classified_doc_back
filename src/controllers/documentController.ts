@@ -60,6 +60,7 @@ export class DocumentController {
     const userRole = (request as any).user?.role || (request.headers['x-user-role'] as string) || '';
     const userName = (request as any).user?.nome || (request.headers['x-user-name'] as string) || '';
     const userUsername = (request as any).user?.username || (request.headers['x-user-username'] as string) || '';
+    const userEmail = (request as any).user?.email || (request.headers['x-user-email'] as string) || '';
 
     if (!id) {
       return reply.code(400).send({ error: 'ID do documento não informado.' });
@@ -81,12 +82,15 @@ export class DocumentController {
       const reqUserId = (userId || '').trim().toLowerCase();
       const reqUserName = (userName || '').trim().toLowerCase();
       const reqUserUsername = (userUsername || '').trim().toLowerCase();
+      const reqUserEmail = (userEmail || '').trim().toLowerCase();
 
       const isCriador = Boolean(docCriador && (
         docCriador === reqUserId || 
         docCriador === reqUserName ||
         docCriador === reqUserUsername ||
-        ((doc as any).autor && (doc as any).autor.trim().toLowerCase() === reqUserName)
+        docCriador === reqUserEmail ||
+        ((doc as any).autor && (doc as any).autor.trim().toLowerCase() === reqUserName) ||
+        ((doc as any).autor && (doc as any).autor.trim().toLowerCase() === reqUserEmail)
       ));
 
       if (!isGestorOuAdmin && !isCriador) {
