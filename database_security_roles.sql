@@ -1,36 +1,79 @@
 -- ==============================================================================
--- PRINCÍPIO DO MENOR PRIVILÉGIO (LEAST PRIVILEGE) NO BANCO DE DADOS
+-- PRINCÍPIO DO MENOR PRIVILÉGIO (LEAST PRIVILEGE) E PAPÉIS DE SEGURANÇA NO BANCO
 -- ==============================================================================
--- Este script demonstra como o sistema deve ser configurado no banco de dados 
--- PostgreSQL para garantir que o Back-End não utilize o usuário Administrador 
--- (postgres) para realizar operações rotineiras (DML).
+-- Este script define a hierarquia e os papéis (Roles) no PostgreSQL/Supabase:
+--
+-- 1. gestor:
+--    Possui permissões administrativas totais sobre o banco e schemas (equivalente 
+--    ao usuário postgres/supabase), capaz de gerenciar todas as tabelas e rotinas.
+--
+-- 2. analista_dados:
+--    Perfil restrito para auditoria e Business Intelligence. Bloqueado nas tabelas
+--    brutas (users / documents), acessando exclusivamente as Views Mascaradas.
+--
+-- 3. app_user / sentinela_app_user:
+--    Usuário de serviço usado pelo Back-End em produção. Possui apenas permissões 
+--    de DML (SELECT, INSERT, UPDATE, DELETE), bloqueado de alterar schemas (DDL).
 -- ==============================================================================
 
--- 1. Revogar o acesso total e permissões desnecessárias do schema public
-REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+-- ------------------------------------------------------------------------------
+-- 1. PAPEL: GESTOR (Administrador do Sistema / Banco)
+-- ------------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gestor') THEN
+    CREATE ROLE gestor WITH LOGIN PASSWORD 'GestorSupabase2026!';
+  END IF;
+END $$;
 
--- 2. Criar um usuário restrito apenas para o uso da aplicação
--- Em produção, substitua a senha por uma senha forte do cofre de credenciais.
-CREATE ROLE app_user WITH LOGIN PASSWORD 'SenhaForteApp123';
+-- Permite ao usuário postgres do Supabase assumir o papel 'gestor' via SET ROLE
+GRANT gestor TO postgres;
 
--- 3. Conceder permissão de conexão ao banco de dados específico
+-- Concede privilégios administrativos completos sobre o schema public
+GRANT USAGE, CREATE ON SCHEMA public TO gestor;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO gestor;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO gestor;
+GRANT ALL PRIVILEGES ON ALL ROUTINES IN SCHEMA public TO gestor;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO gestor;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO gestor;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO gestor;
+
+
+-- ------------------------------------------------------------------------------
+-- 2. PAPEL: ANALISTA DE DADOS (Acesso Restrito às Views Mascaradas)
+-- ------------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'analista_dados') THEN
+    CREATE ROLE analista_dados WITH LOGIN PASSWORD 'SenhaAnalista123!';
+  END IF;
+END $$;
+
+GRANT analista_dados TO postgres;
+
+GRANT USAGE ON SCHEMA public TO analista_dados;
+REVOKE ALL ON users FROM analista_dados;
+REVOKE ALL ON documents FROM analista_dados;
+GRANT SELECT, INSERT ON vw_users_masked TO analista_dados;
+GRANT SELECT, INSERT ON vw_documents_masked TO analista_dados;
+
+
+-- ------------------------------------------------------------------------------
+-- 3. PAPEL: APP_USER (Back-End em Produção - DML apenas)
+-- ------------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_user') THEN
+    CREATE ROLE app_user WITH LOGIN PASSWORD 'SenhaForteApp123!';
+  END IF;
+END $$;
+
+GRANT app_user TO postgres;
+
 GRANT CONNECT ON DATABASE postgres TO app_user;
-
--- 4. Conceder permissão de uso do Schema
 GRANT USAGE ON SCHEMA public TO app_user;
-
--- 5. Conceder APENAS permissões de DML (Manipulação de Dados)
--- O 'app_user' não poderá fazer DROP, ALTER, ou CREATE de tabelas
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
 
--- 6. Garantir que futuras tabelas criadas pelo administrador (via migrações) 
--- também herdem automaticamente as permissões restritas de DML para o app_user.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
-
--- ==============================================================================
--- AVISO AO PROFESSOR:
--- No arquivo `.env`, a aplicação deverá se conectar utilizando este usuário
--- restrito no `DATABASE_URL` (ou `APP_DATABASE_URL`), garantindo que ataques
--- de SQL Injection não consigam deletar ou alterar as tabelas (arquitetura).
--- ==============================================================================
